@@ -5,89 +5,101 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LegalInsight - AI-Powered Contract Analysis</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- PDF.js library for PDF parsing -->
+    <!-- PDF.js for client-side PDF parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- LangChain.js engine (ES module — loads async, graceful fallback if slow) -->
+    <script type="module" src="langchain-engine.js"></script>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>⚖️ LegalInsight</h1>
             <p class="description">
-                LLM-powered contract analysis using Self-RAG and Hallucination detection.
-                Upload contracts, ask questions, and receive instant intelligent analysis.
+                LLM-powered contract analysis using Self-RAG and hallucination detection.
+                Powered by <strong>LangChain.js</strong> for smart document chunking,
+                structured prompt management, and semantic consistency scoring —
+                running entirely in your browser.
             </p>
         </header>
 
         <div class="main-content">
-            <!-- API Configuration Section -->
+
+            <!-- ── API Configuration ─────────────────────────────────────── -->
             <div class="card config-section">
                 <h2>🔑 API Configuration</h2>
                 <div class="form-group">
                     <label for="api-provider">Choose AI Provider:</label>
                     <select id="api-provider" onchange="updateApiConfig()">
-                        <option value="openai">OpenAI (GPT-4)</option>
-                        <option value="anthropic">Anthropic (Claude)</option>
-                        <option value="gemini">Google Gemini Pro</option>
-                        <option value="groq">Groq (Mixtral/Llama)</option>
-                        <option value="cohere">Cohere</option>
-                        <option value="mistral">Mistral AI</option>
+                        <option value="openai">OpenAI (GPT-4o)</option>
+                        <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
+                        <option value="gemini">Google Gemini 1.5 Pro</option>
+                        <option value="groq">Groq (Llama 3.1)</option>
+                        <option value="cohere">Cohere (Command R+)</option>
+                        <option value="mistral">Mistral Large</option>
                         <option value="demo">Demo Mode (No API Key Required)</option>
                     </select>
                 </div>
                 <div class="form-group" id="api-key-section">
                     <label for="api-key">API Key:</label>
-                    <input type="password" id="api-key" placeholder="Enter your API key (stored locally only)">
+                    <input type="password" id="api-key"
+                           placeholder="Enter your API key (stored locally only)">
                     <button onclick="saveApiKey()" class="btn btn-secondary">Save Key</button>
                     <span id="api-status"></span>
                     <p class="help-text">
-                        Your API key is stored locally in your browser and never sent anywhere except to the AI provider.
+                        Your API key is stored locally in your browser and never sent anywhere
+                        except directly to the AI provider.
                         <br>Get your API key:
-                        <a href="https://platform.openai.com/api-keys" target="_blank" id="api-link">OpenAI</a>
+                        <a href="https://platform.openai.com/api-keys" target="_blank"
+                           id="api-link">OpenAI</a>
                     </p>
                 </div>
             </div>
 
-            <!-- Contract Input Section -->
+            <!-- ── Contract Input ────────────────────────────────────────── -->
             <div class="card">
                 <h2>📄 Contract Input</h2>
 
-                <!-- File Upload -->
                 <div class="upload-section">
                     <div class="upload-box" id="upload-box">
                         <div class="upload-icon">📎</div>
-                        <p class="upload-text">Drag & Drop PDF here or click to browse</p>
-                        <input type="file" id="pdf-upload" accept=".pdf" onchange="handlePDFUpload(event)" style="display: none;">
-                        <button onclick="document.getElementById('pdf-upload').click()" class="btn btn-primary">
+                        <p class="upload-text">Drag &amp; Drop PDF here or click to browse</p>
+                        <input type="file" id="pdf-upload" accept=".pdf"
+                               onchange="handlePDFUpload(event)" style="display:none">
+                        <button onclick="document.getElementById('pdf-upload').click()"
+                                class="btn btn-primary">
                             📁 Upload PDF Contract
                         </button>
                     </div>
-                    <div id="file-info" style="display: none;">
+                    <div id="file-info" style="display:none">
                         <p>📄 File: <strong id="file-name"></strong></p>
                         <p>📊 Pages: <strong id="file-pages"></strong></p>
-                        <button onclick="clearFile()" class="btn btn-outline btn-sm">Remove File</button>
+                        <button onclick="clearFile()" class="btn btn-outline btn-sm">
+                            Remove File
+                        </button>
                     </div>
                 </div>
 
-                <div class="divider">
-                    <span>OR</span>
-                </div>
+                <div class="divider"><span>OR</span></div>
 
-                <!-- Text Input -->
                 <div class="form-group">
                     <label for="contract-text">Paste Contract Text:</label>
-                    <textarea id="contract-text" rows="10" placeholder="Paste your legal contract text here...
+                    <textarea id="contract-text" rows="10"
+                              placeholder="Paste your legal contract text here...
 
 Example: This Agreement is entered into on January 1, 2024, between Company A and Company B..."></textarea>
                 </div>
 
                 <div class="form-group">
-                    <label for="query-text">What would you like to know? (Optional)</label>
-                    <input type="text" id="query-text" placeholder="e.g., What are the payment terms? What are the termination clauses?">
+                    <label for="query-text">
+                        What would you like to know? <span class="optional">(Optional)</span>
+                    </label>
+                    <input type="text" id="query-text"
+                           placeholder="e.g. What are the payment terms? What are the termination clauses?">
                 </div>
 
                 <div class="button-group">
                     <button onclick="analyzeContract()" class="btn btn-primary" id="analyze-btn">
-                        🔍 Analyze Contract
+                        🔍 Analyse Contract
                     </button>
                     <button onclick="summarizeContract()" class="btn btn-secondary">
                         📋 Quick Summary
@@ -100,17 +112,17 @@ Example: This Agreement is entered into on January 1, 2024, between Company A an
                     </button>
                 </div>
 
-                <div id="loading" class="loading" style="display: none;">
+                <div id="loading" class="loading" style="display:none">
                     <div class="spinner"></div>
-                    <p id="loading-text">Analyzing contract with AI...</p>
+                    <p id="loading-text">Initialising analysis engine…</p>
                 </div>
             </div>
 
-            <!-- Results Section -->
-            <div id="results-section" class="card results-section" style="display: none;">
+            <!-- ── Results ───────────────────────────────────────────────── -->
+            <div id="results-section" class="card results-section" style="display:none">
                 <h2>📊 Analysis Results</h2>
 
-                <!-- Time Savings Metrics -->
+                <!-- Metrics row -->
                 <div class="metrics-grid">
                     <div class="metric-card highlight">
                         <div class="metric-value" id="time-saved">--</div>
@@ -124,19 +136,30 @@ Example: This Agreement is entered into on January 1, 2024, between Company A an
                         <div class="metric-value" id="speedup">--</div>
                         <div class="metric-label">Speedup Factor</div>
                     </div>
-                    <div class="metric-card">
+                    <div class="metric-card" id="hallucination-card">
                         <div class="metric-value" id="hallucination-risk">--</div>
                         <div class="metric-label">Hallucination Risk</div>
                     </div>
                 </div>
 
-                <!-- Answer Section -->
+                <!-- RAG chunk badge -->
+                <span id="chunk-info" class="chunk-badge" style="display:none"></span>
+
+                <!-- Primary analysis -->
                 <div class="answer-section">
                     <h3>💡 Analysis</h3>
                     <div id="answer-content" class="answer-content"></div>
                 </div>
 
-                <!-- Hallucination Analysis -->
+                <!-- Action buttons inside results -->
+                <div class="button-group" style="margin-top:0; margin-bottom:10px">
+                    <button onclick="extractKeyTerms()" class="btn btn-outline btn-sm"
+                            id="extract-btn">
+                        🗂️ Extract Key Terms
+                    </button>
+                </div>
+
+                <!-- Hallucination / consistency analysis -->
                 <div class="eigenscore-section">
                     <h3>🎯 Hallucination Analysis</h3>
                     <div class="eigenscore-details">
@@ -144,13 +167,22 @@ Example: This Agreement is entered into on January 1, 2024, between Company A an
                             <div class="consistency-fill" id="consistency-fill"></div>
                         </div>
                         <div class="eigenscore-info">
-                            <p><strong>Consistency Score:</strong> <span id="consistency-score">--</span></p>
-                            <p><strong>Interpretation:</strong> <span id="consistency-interpretation">--</span></p>
+                            <p>
+                                <strong>Consistency Score:</strong>
+                                <span id="consistency-score">--</span>
+                            </p>
+                            <p>
+                                <strong>Interpretation:</strong>
+                                <span id="consistency-interpretation">--</span>
+                            </p>
+                            <p class="consistency-method-note">
+                                <span id="consistency-method"></span>
+                            </p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Performance Metrics -->
+                <!-- Performance metrics table -->
                 <div class="performance-section">
                     <h3>⚡ Performance Metrics</h3>
                     <table class="metrics-table">
@@ -173,16 +205,59 @@ Example: This Agreement is entered into on January 1, 2024, between Company A an
                     </table>
                 </div>
 
-                <!-- Alternative Responses -->
+                <!-- Verification responses -->
                 <div class="alternatives-section">
-                    <h3>🔄 Alternative Responses (for verification)</h3>
-                    <button onclick="toggleAlternatives()" class="btn btn-outline btn-sm">Show/Hide Alternatives</button>
-                    <div id="alternatives-content" style="display: none;"></div>
+                    <h3>🔄 Verification Responses</h3>
+                    <button onclick="toggleAlternatives()"
+                            class="btn btn-outline btn-sm">
+                        Show / Hide
+                    </button>
+                    <div id="alternatives-content" style="display:none"></div>
                 </div>
             </div>
 
-            <!-- Analytics Dashboard -->
-            <div id="analytics-section" class="card" style="display: none;">
+            <!-- ── Structured Key Terms ───────────────────────────────────── -->
+            <div id="structured-data-section" class="card" style="display:none">
+                <h2>🗂️ Key Contract Terms</h2>
+                <p class="help-text" style="margin-bottom:20px">
+                    Extracted by LangChain's structured output parser.
+                </p>
+                <div id="structured-data-content"></div>
+            </div>
+
+            <!-- ── Follow-up Questions ───────────────────────────────────── -->
+            <div id="followup-section" class="card followup-card" style="display:none">
+                <h2>💬 Follow-up Questions</h2>
+                <p class="help-text" style="margin-bottom:20px">
+                    LangChain re-chunks the contract for each question and passes
+                    conversation history so follow-ups stay in context.
+                </p>
+
+                <div id="conversation-history"></div>
+
+                <div class="followup-input-row">
+                    <input type="text" id="followup-input"
+                           placeholder="Ask a follow-up about this contract…"
+                           onkeydown="if(event.key==='Enter') askFollowUp()">
+                    <button onclick="askFollowUp()" class="btn btn-primary" id="followup-btn">
+                        Ask
+                    </button>
+                </div>
+
+                <div id="followup-loading" class="followup-loading" style="display:none">
+                    <div class="spinner-sm"></div>
+                    <span>Thinking…</span>
+                </div>
+
+                <div style="margin-top:16px">
+                    <button onclick="clearConversation()" class="btn btn-outline btn-sm">
+                        Clear History
+                    </button>
+                </div>
+            </div>
+
+            <!-- ── Session Analytics ──────────────────────────────────────── -->
+            <div id="analytics-section" class="card" style="display:none">
                 <h2>📈 Session Analytics</h2>
                 <div class="analytics-grid">
                     <div class="metric-card">
@@ -198,11 +273,18 @@ Example: This Agreement is entered into on January 1, 2024, between Company A an
                         <div class="metric-label">Avg Efficiency</div>
                     </div>
                 </div>
-                <button onclick="refreshAnalytics()" class="btn btn-secondary">Refresh Analytics</button>
+                <div class="button-group">
+                    <button onclick="refreshAnalytics()" class="btn btn-secondary">
+                        Refresh
+                    </button>
+                    <button onclick="clearAnalytics()" class="btn btn-outline">
+                        Clear Analytics
+                    </button>
+                </div>
             </div>
-        </div>
 
-    </div>
+        </div><!-- /.main-content -->
+    </div><!-- /.container -->
 
     <script src="app.js"></script>
 </body>
