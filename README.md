@@ -8,7 +8,7 @@
 
 ## What is LegalInsight?
 
-LegalInsight is an advanced AI-powered system that revolutionises legal contract analysis by combining **Self-RAG (Self-Reflective Retrieval-Augmented Generation)** with **hallucination detection**. It is powered by **[LangChain.js](https://js.langchain.com/)** running entirely in the browser — no server, no build step, fully compatible with GitHub Pages.
+LegalInsight is an advanced AI-powered system that revolutionises legal contract analysis by combining **Self-RAG (Self-Reflective Retrieval-Augmented Generation)** with **hallucination detection**. It is powered by **[LangChain.js](https://js.langchain.com/)** running entirely in the browser.
 
 Upload contracts, ask questions in natural language, and receive instant, reliable analysis—all while tracking significant time savings compared to manual review.
 
