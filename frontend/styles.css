@@ -598,7 +598,177 @@ select:focus {
     }
 }
 
-/* Utility Classes */
+/* ── LangChain RAG chunk badge ───────────────────────────────────────────── */
+.chunk-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--taupe) 0%, var(--grey-olive) 100%);
+    color: var(--parchment);
+    font-size: 0.78em;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: 20px;
+    margin: 0 0 20px 0;
+    letter-spacing: 0.3px;
+}
+
+/* ── Consistency method note ─────────────────────────────────────────────── */
+.consistency-method-note {
+    font-size: 0.85em;
+    color: var(--grey-olive);
+    margin-top: 6px;
+    font-style: italic;
+}
+
+/* ── Optional label ──────────────────────────────────────────────────────── */
+.optional {
+    font-weight: 400;
+    color: var(--grey-olive);
+    font-size: 0.9em;
+}
+
+/* ── Structured data card (LangChain key-terms extraction) ───────────────── */
+.lc-structured-data {
+    font-size: 0.97em;
+}
+
+.lc-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.lc-field {
+    background: var(--background);
+    border-radius: 8px;
+    padding: 14px 16px;
+    border-left: 3px solid var(--powder-blush);
+}
+
+.lc-label {
+    display: block;
+    font-size: 0.78em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--grey-olive);
+    margin-bottom: 5px;
+}
+
+.lc-value {
+    display: block;
+    color: var(--primary);
+    font-weight: 500;
+    line-height: 1.5;
+}
+
+.lc-list-field {
+    grid-column: 1 / -1;
+    border-left-color: var(--taupe);
+}
+
+.lc-list-field ul {
+    margin: 8px 0 0 18px;
+    padding: 0;
+    line-height: 1.8;
+    color: var(--primary);
+}
+
+.lc-risks {
+    border-left-color: var(--danger);
+}
+
+.lc-risks ul li {
+    color: var(--danger);
+}
+
+/* ── Follow-up conversation card ─────────────────────────────────────────── */
+.followup-card {
+    border-top: 3px solid var(--powder-blush);
+}
+
+.followup-input-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.followup-input-row input {
+    flex: 1;
+    padding: 14px 16px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 1em;
+    font-family: inherit;
+    color: var(--primary);
+    background: var(--surface);
+    transition: border-color 0.3s;
+}
+
+.followup-input-row input:focus {
+    outline: none;
+    border-color: var(--powder-blush);
+    box-shadow: 0 0 0 3px rgba(224, 175, 160, 0.1);
+}
+
+.followup-loading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    color: var(--grey-olive);
+    font-size: 0.95em;
+}
+
+.spinner-sm {
+    width: 20px;
+    height: 20px;
+    border: 3px solid var(--silver);
+    border-top-color: var(--taupe);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+/* Conversation history entries */
+.conv-exchange {
+    margin: 18px 0;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.conv-q,
+.conv-a {
+    padding: 14px 18px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    font-size: 0.97em;
+}
+
+.conv-q {
+    background: var(--parchment);
+    border-left: 4px solid var(--grey-olive);
+}
+
+.conv-a {
+    background: var(--surface);
+    border-left: 4px solid var(--powder-blush);
+}
+
+.conv-role {
+    display: inline-block;
+    font-size: 0.72em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--grey-olive);
+    margin-bottom: 5px;
+    margin-right: 8px;
+}
+
+/* ── Utility Classes ─────────────────────────────────────────────────────── */
 .text-center {
     text-align: center;
 }
