@@ -9,7 +9,6 @@ import urllib.request
 from pathlib import Path
 from tqdm import tqdm
 
-# Model URLs
 MODELS = {
     "selfrag-7b-q4": {
         "url": "https://huggingface.co/selfrag/selfrag_llama2_7b/resolve/main/selfrag_llama2_7b-q4_k_m.gguf",
@@ -41,14 +40,13 @@ def download_file(url: str, output_path: Path):
     with DownloadProgressBar(unit='B', unit_scale=True, miniters=1, desc=output_path.name) as t:
         urllib.request.urlretrieve(url, filename=output_path, reporthook=t.update_to)
 
-    print(f"\n✓ Download complete: {output_path}")
+    print(f"\nDownload complete: {output_path}")
 
 def main():
     print("=" * 60)
     print("LegalInsight - Self-RAG Model Download")
     print("=" * 60)
 
-    # Select model
     print("\nAvailable models:")
     for i, (key, model) in enumerate(MODELS.items(), 1):
         print(f"{i}. {key} ({model['size']})")
@@ -57,27 +55,24 @@ def main():
     model_key = list(MODELS.keys())[int(choice) - 1]
     model = MODELS[model_key]
 
-    # Set output path
     project_root = Path(__file__).parent.parent
     output_dir = project_root / "data" / "models"
     output_path = output_dir / model["filename"]
 
-    # Check if already exists
     if output_path.exists():
         overwrite = input(f"\n{output_path.name} already exists. Overwrite? (y/N): ").strip().lower()
         if overwrite != 'y':
             print("Download cancelled.")
             return
 
-    # Download
     try:
         download_file(model["url"], output_path)
-        print(f"\n✓ Model ready at: {output_path}")
+        print(f"\nModel ready at: {output_path}")
         print("\nYou can now run the backend server:")
         print(f"  export SELFRAG_MODEL_PATH={output_path}")
         print("  python backend/api.py")
     except Exception as e:
-        print(f"\n✗ Download failed: {e}")
+        print(f"\nDownload failed: {e}")
         print("\nAlternative: Download manually from HuggingFace")
         print(f"  URL: {model['url']}")
         print(f"  Save to: {output_path}")

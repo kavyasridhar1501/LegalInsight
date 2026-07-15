@@ -40,7 +40,6 @@ class EmbeddingModel:
         self.batch_size = batch_size
         self.normalize_embeddings = normalize_embeddings
 
-        # Load model
         print(f"Loading embedding model: {model_name}")
         self.model = SentenceTransformer(model_name, device=device)
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
@@ -179,7 +178,6 @@ class EmbeddingModel:
             Similarity matrix (n, m)
         """
         if metric == "cosine":
-            # Normalize if not already normalized
             if not self.normalize_embeddings:
                 embeddings1 = embeddings1 / np.linalg.norm(embeddings1, axis=1, keepdims=True)
                 embeddings2 = embeddings2 / np.linalg.norm(embeddings2, axis=1, keepdims=True)

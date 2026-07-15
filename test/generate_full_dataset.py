@@ -13,14 +13,13 @@ from tqdm import tqdm
 
 def download_cuad_dataset(max_samples=None):
     """Download CUAD (Contract Understanding Atticus Dataset) from HuggingFace."""
-    print("📥 Downloading CUAD dataset from HuggingFace...")
+    print("Downloading CUAD dataset from HuggingFace...")
 
     try:
-        # Load CUAD QA dataset
         dataset = load_dataset("theatticusproject/cuad-qa", split="train")
 
         qa_pairs = []
-        print(f"✓ Loaded {len(dataset)} samples from CUAD")
+        print(f"Loaded {len(dataset)} samples from CUAD")
 
         samples = dataset if max_samples is None else dataset.select(range(min(max_samples, len(dataset))))
 
@@ -30,7 +29,6 @@ def download_cuad_dataset(max_samples=None):
             question = item.get('question', '')
             answers = item.get('answers', {})
 
-            # Extract answer text
             answer_text = ''
             if answers and 'text' in answers:
                 answer_texts = answers['text']
@@ -46,22 +44,22 @@ def download_cuad_dataset(max_samples=None):
                     'source': f'CUAD query {idx + 1}'
                 })
 
-        print(f"✓ Processed {len(qa_pairs)} Q&A pairs from CUAD")
+        print(f"Processed {len(qa_pairs)} Q&A pairs from CUAD")
         return qa_pairs
 
     except Exception as e:
-        print(f"✗ Error loading CUAD: {e}")
+        print(f"Error loading CUAD: {e}")
         return []
 
 def download_legalbench_consumer_contracts(max_samples=None):
     """Download LegalBench consumer contracts dataset."""
-    print("\n📥 Downloading LegalBench Consumer Contracts...")
+    print("\nDownloading LegalBench Consumer Contracts...")
 
     try:
         dataset = load_dataset("mteb/legalbench_consumer_contracts_qa", split="test")
 
         qa_pairs = []
-        print(f"✓ Loaded {len(dataset)} samples")
+        print(f"Loaded {len(dataset)} samples")
 
         samples = dataset if max_samples is None else dataset.select(range(min(max_samples, len(dataset))))
 
@@ -78,22 +76,22 @@ def download_legalbench_consumer_contracts(max_samples=None):
                     'source': f'LegalBench Consumer Contracts query {idx + 1}'
                 })
 
-        print(f"✓ Processed {len(qa_pairs)} Q&A pairs from LegalBench")
+        print(f"Processed {len(qa_pairs)} Q&A pairs from LegalBench")
         return qa_pairs
 
     except Exception as e:
-        print(f"✗ Error loading LegalBench: {e}")
+        print(f"Error loading LegalBench: {e}")
         return []
 
 def download_contractnli(max_samples=None):
     """Download ContractNLI dataset."""
-    print("\n📥 Downloading ContractNLI...")
+    print("\nDownloading ContractNLI...")
 
     try:
         dataset = load_dataset("coastalcph/lex_glue", "contractnli", split="train")
 
         qa_pairs = []
-        print(f"✓ Loaded {len(dataset)} samples")
+        print(f"Loaded {len(dataset)} samples")
 
         samples = dataset if max_samples is None else dataset.select(range(min(max_samples, len(dataset))))
 
@@ -111,11 +109,11 @@ def download_contractnli(max_samples=None):
                     'source': f'ContractNLI query {idx + 1}'
                 })
 
-        print(f"✓ Processed {len(qa_pairs)} Q&A pairs from ContractNLI")
+        print(f"Processed {len(qa_pairs)} Q&A pairs from ContractNLI")
         return qa_pairs
 
     except Exception as e:
-        print(f"✗ Error loading ContractNLI: {e}")
+        print(f"Error loading ContractNLI: {e}")
         return []
 
 def main():
@@ -128,20 +126,16 @@ def main():
 
     all_qa_pairs = []
 
-    # Download datasets (limiting to create a substantial but manageable dataset)
-    # CUAD has ~13,000+ samples
+    # Sample counts chosen to give a substantial but manageable dataset; CUAD has ~13,000+ samples total
     cuad_data = download_cuad_dataset(max_samples=4000)
     all_qa_pairs.extend(cuad_data)
 
-    # LegalBench Consumer Contracts
     legalbench_data = download_legalbench_consumer_contracts(max_samples=1000)
     all_qa_pairs.extend(legalbench_data)
 
-    # ContractNLI
     contractnli_data = download_contractnli(max_samples=1858)
     all_qa_pairs.extend(contractnli_data)
 
-    # Summary
     print("\n" + "="*60)
     print("DATASET SUMMARY")
     print("="*60)
@@ -151,7 +145,6 @@ def main():
     print(f"  - LegalBench Consumer Contracts: {len(legalbench_data):,}")
     print(f"  - ContractNLI: {len(contractnli_data):,}")
 
-    # Calculate statistics
     total_chars = sum(len(q['passage']) for q in all_qa_pairs)
     avg_length = total_chars / len(all_qa_pairs) if all_qa_pairs else 0
 
@@ -160,15 +153,14 @@ def main():
     print(f"  - Average passage length: {avg_length:.0f} characters")
     print(f"  - Estimated pages: {total_chars / 3000:.0f}")
 
-    # Save to file
     output_path = '../data/full_legalbench_qa.json'
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     with open(output_path, 'w') as f:
         json.dump(all_qa_pairs, f, indent=2)
 
-    print(f"\n✓ Dataset saved to: {output_path}")
-    print(f"\nYou can now run the performance evaluation notebook!")
+    print(f"\nDataset saved to: {output_path}")
+    print(f"\nYou can now run the performance evaluation notebook.")
     print("="*60)
 
 if __name__ == '__main__':

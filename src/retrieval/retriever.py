@@ -60,7 +60,6 @@ class LegalRetriever:
             text_field: Field containing document text
             chunk_documents: Whether to chunk documents before indexing
         """
-        # Chunk documents if requested
         if chunk_documents and self.chunker is not None:
             print(f"Chunking {len(documents)} documents...")
             chunks = self.chunker.chunk_documents(documents)
@@ -68,12 +67,10 @@ class LegalRetriever:
         else:
             chunks = documents
 
-        # Generate embeddings
         print(f"Generating embeddings for {len(chunks)} text segments...")
         texts = [chunk[text_field] for chunk in chunks]
         embeddings = self.embedding_model.encode(texts, show_progress_bar=True)
 
-        # Create or update index
         if self.vector_index is None:
             embedding_dim = self.embedding_model.get_embedding_dim()
             self.vector_index = VectorIndex(
@@ -81,7 +78,6 @@ class LegalRetriever:
                 index_type="IndexFlatIP",
             )
 
-        # Add to index
         self.vector_index.add(embeddings, chunks)
 
         print(f"Indexing complete. Total documents in index: {self.vector_index.get_num_documents()}")
@@ -115,20 +111,16 @@ class LegalRetriever:
         if min_similarity is None:
             min_similarity = self.min_similarity
 
-        # Handle single query
         if isinstance(query, str):
             query = [query]
             single_query = True
         else:
             single_query = False
 
-        # Encode queries
         query_embeddings = self.embedding_model.encode(query, show_progress_bar=False)
 
-        # Search index
         results = self.vector_index.search_with_documents(query_embeddings, k=top_k)
 
-        # Filter by minimum similarity
         filtered_results = []
         for query_results in results:
             filtered = [
@@ -137,7 +129,6 @@ class LegalRetriever:
             ]
             filtered_results.append(filtered)
 
-        # Return single result list for single query
         if single_query:
             filtered_results = filtered_results[0]
 
@@ -166,12 +157,9 @@ class LegalRetriever:
         if retrieve_k is None:
             retrieve_k = top_k * 2
 
-        # Initial retrieval
         results = self.retrieve(query, top_k=retrieve_k)
 
         # TODO: Implement reranking logic here if needed
-        # For now, just return top_k results
-
         return results[:top_k]
 
     def save_index(self, output_dir: str):
@@ -230,21 +218,17 @@ def load_retriever_from_config(config_path: str) -> LegalRetriever:
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
 
-    # Load embedding model
     embedding_model = load_embedding_model_from_config(config)
 
-    # Load chunker
     chunker = None
     if 'chunking' in config:
         chunking_config = config['chunking']
         chunker = DocumentChunker(chunking_config)
 
-    # Get retrieval parameters
     retrieval_config = config.get('retrieval', {})
     top_k = retrieval_config.get('top_k', 5)
     min_similarity = retrieval_config.get('min_similarity', 0.0)
 
-    # Create retriever
     retriever = LegalRetriever(
         embedding_model=embedding_model,
         vector_index=None,  # Will be created when indexing or loaded
@@ -260,28 +244,24 @@ if __name__ == "__main__":
     # Example usage
     print("Creating test retriever...")
 
-    # Create embedding model
     embedding_model = EmbeddingModel(
         model_name="sentence-transformers/all-MiniLM-L6-v2",
         device="cpu",
         batch_size=8,
     )
 
-    # Create chunker
     chunker_config = {
         'chunk_size': 256,
         'chunk_overlap': 30,
     }
     chunker = DocumentChunker(chunker_config)
 
-    # Create retriever
     retriever = LegalRetriever(
         embedding_model=embedding_model,
         chunker=chunker,
         top_k=3,
     )
 
-    # Test documents
     documents = [
         {
             "text": """
@@ -312,11 +292,9 @@ if __name__ == "__main__":
         },
     ]
 
-    # Index documents
     print("\nIndexing documents...")
     retriever.index_documents(documents)
 
-    # Test retrieval
     query = "What are the requirements for proving negligence?"
     print(f"\nQuery: {query}")
 

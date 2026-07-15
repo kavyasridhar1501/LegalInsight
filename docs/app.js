@@ -3,12 +3,10 @@
  * No backend server required - uses OpenAI/Anthropic API directly
  */
 
-// Initialize PDF.js
 if (typeof pdfjsLib !== 'undefined') {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 
-// Global variables
 let currentPDFText = '';
 let analytics = {
     totalAnalyses: 0,
@@ -16,7 +14,6 @@ let analytics = {
     totalEfficiency: 0
 };
 
-// Load saved settings
 window.addEventListener('DOMContentLoaded', function() {
     loadSettings();
     loadAnalytics();

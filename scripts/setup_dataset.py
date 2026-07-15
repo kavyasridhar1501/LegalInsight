@@ -31,7 +31,7 @@ def download_file(url: str, output_path: Path):
     with DownloadProgressBar(unit='B', unit_scale=True, miniters=1, desc=output_path.name) as t:
         urllib.request.urlretrieve(url, filename=output_path, reporthook=t.update_to)
 
-    print(f"\n✓ Download complete: {output_path}")
+    print(f"\nDownload complete: {output_path}")
 
 def setup_legalbench():
     """Setup LegalBench dataset"""
@@ -51,7 +51,6 @@ def setup_legalbench():
     print("\nNote: The full LegalBench dataset is large (~several GB)")
     print("For this project, we'll use the mini version (776 queries)")
 
-    # Create sample dataset structure
     print("\n3. Creating sample dataset configuration...")
 
     sample_config = {
@@ -67,9 +66,8 @@ def setup_legalbench():
     with open(config_path, 'w') as f:
         json.dump(sample_config, f, indent=2)
 
-    print(f"✓ Configuration saved to: {config_path}")
+    print(f"Configuration saved to: {config_path}")
 
-    # Instructions for manual download
     print("\n" + "=" * 60)
     print("MANUAL DOWNLOAD REQUIRED")
     print("=" * 60)
@@ -88,7 +86,6 @@ def setup_legalbench():
     print(f"\nPlace your legal documents in: {data_dir / 'corpus'}")
     print("Supported formats: .txt, .pdf (will be converted)")
 
-    # Create sample documents for testing
     print("\n4. Creating sample legal documents for testing...")
 
     samples = [
@@ -162,10 +159,10 @@ This Agreement is between DataCorp Solutions ("Licensor") and Enterprise Client 
         sample_path = corpus_dir / sample["filename"]
         with open(sample_path, 'w') as f:
             f.write(sample["content"])
-        print(f"✓ Created: {sample_path}")
+        print(f"Created: {sample_path}")
 
     print("\n" + "=" * 60)
-    print("✓ Dataset setup complete!")
+    print("Dataset setup complete")
     print("=" * 60)
     print(f"\nDataset location: {data_dir}")
     print("\nYou can now:")

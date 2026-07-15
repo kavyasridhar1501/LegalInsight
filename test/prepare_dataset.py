@@ -83,7 +83,6 @@ def convert_to_qa_format(
             file_path = snippet.get('file_path', '')
             span = snippet.get('span', [0, 0])
 
-            # Load corpus file (with caching)
             if file_path not in corpus_cache:
                 try:
                     corpus_cache[file_path] = load_corpus_file(corpus_dir, file_path)
@@ -91,12 +90,10 @@ def convert_to_qa_format(
                     print(f"    Warning: Could not load {file_path}: {e}")
                     continue
 
-            # Extract the snippet
             content = corpus_cache[file_path]
             snippet_text = content[span[0]:span[1]]
             passages.append(snippet_text)
 
-        # Combine passages
         combined_passage = " ... ".join(passages)
 
         qa_data.append({
@@ -107,12 +104,11 @@ def convert_to_qa_format(
             'source': f"LegalBench-RAG query {idx + 1}"
         })
 
-    # Save to JSON
     with open(output_file, 'w') as f:
         json.dump(qa_data, f, indent=2)
 
-    print(f"\n✓ Converted {len(qa_data)} queries")
-    print(f"✓ Saved to: {output_file}")
+    print(f"\nConverted {len(qa_data)} queries")
+    print(f"Saved to: {output_file}")
     print(f"\nDataset Statistics:")
     print(f"  Total queries: {len(qa_data)}")
     print(f"  Average passage length: {sum(len(q['passage']) for q in qa_data) / len(qa_data):.0f} characters")
@@ -150,7 +146,6 @@ def main():
 
     args = parser.parse_args()
 
-    # Verify directories exist
     if not os.path.exists(args.benchmarks_dir):
         print(f"Error: Benchmarks directory not found: {args.benchmarks_dir}")
         print("\nPlease run ./download_dataset.sh first to download the full dataset.")
@@ -161,10 +156,8 @@ def main():
         print("\nPlease run ./download_dataset.sh first to download the full dataset.")
         return 1
 
-    # Create output directory if needed
     os.makedirs(os.path.dirname(args.output) or '.', exist_ok=True)
 
-    # Convert
     convert_to_qa_format(
         args.benchmarks_dir,
         args.corpus_dir,

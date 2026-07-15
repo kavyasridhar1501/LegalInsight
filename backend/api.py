@@ -13,7 +13,6 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import yaml
 
-# Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from self_rag.gguf_inference import SelfRAGGGUFInference, compute_eigenscore
@@ -24,7 +23,6 @@ from retrieval.chunking import DocumentChunker
 app = Flask(__name__)
 CORS(app)  # Enable CORS for GitHub Pages frontend
 
-# Global variables for model and retriever
 model = None
 retriever = None
 analytics_data = []
@@ -35,13 +33,12 @@ class TimeTracker:
     @staticmethod
     def estimate_manual_time(contract_length: int) -> float:
         """
-        Estimate manual contract analysis time in seconds
-        Rule of thumb: 1 page (~500 words) = 5-10 minutes for basic review
-        We'll use 1000 characters ≈ 150 words ≈ 0.3 pages
+        Estimate manual contract analysis time in seconds.
+        Rule of thumb: 1 page (~500 words) = 5-10 minutes for basic review.
         """
         pages = contract_length / 3000  # ~3000 chars per page
         minutes = pages * 7.5  # Average of 5-10 minutes per page
-        return minutes * 60  # Convert to seconds
+        return minutes * 60
 
     @staticmethod
     def calculate_time_saved(actual_time: float, contract_length: int) -> Dict:
@@ -88,12 +85,10 @@ def initialize_retriever():
     global retriever
 
     try:
-        # Load configuration
         config_path = Path(__file__).parent.parent / "configs" / "retrieval_config.yaml"
         with open(config_path, 'r') as f:
             config = yaml.safe_load(f)
 
-        # Initialize components
         embedding_model = EmbeddingModel(
             model_name=config['embedding']['model_name'],
             device=config['embedding'].get('device', 'cpu')
@@ -154,24 +149,20 @@ def analyze_contract():
         if model is None:
             return jsonify({"error": "Model not initialized. Call /initialize first"}), 503
 
-        # Index the contract for retrieval
         retrieval_context = None
         if use_retrieval and retriever is not None:
             retrieval_start = time.time()
             documents = [{"text": contract_text, "metadata": {"source": "user_contract"}}]
             retriever.index_documents(documents)
 
-            # Retrieve relevant chunks
             results = retriever.retrieve(query, top_k=3)
             retrieval_context = "\n\n".join([r['text'] for r in results])
             retrieval_time = time.time() - retrieval_start
         else:
             retrieval_time = 0
 
-        # Generate response with Self-RAG + EigenScore
         generation_start = time.time()
 
-        # Generate multiple responses for EigenScore
         responses = []
         for i in range(num_generations):
             if use_retrieval and retrieval_context:
@@ -189,16 +180,13 @@ def analyze_contract():
                 )
             responses.append(output.answer)
 
-        # Compute EigenScore
         eigenscore = compute_eigenscore(responses, model.model)
 
         generation_time = time.time() - generation_start
         total_time = time.time() - start_time
 
-        # Calculate time savings
         time_metrics = TimeTracker.calculate_time_saved(total_time, len(contract_text))
 
-        # Store analytics
         analytics_entry = {
             "timestamp": datetime.now().isoformat(),
             "contract_length": len(contract_text),
@@ -284,12 +272,12 @@ def get_analytics():
         "total_time_saved_minutes": round(total_time_saved / 60, 2),
         "total_time_saved_hours": round(total_time_saved / 3600, 2),
         "average_efficiency_improvement_percent": round(avg_efficiency, 2),
-        "recent_analyses": analytics_data[-10:]  # Last 10 analyses
+        "recent_analyses": analytics_data[-10:]
     })
 
 def analyze_contract_internal(contract_text: str, query: str):
     """Internal helper for contract analysis"""
-    # Reuse the analyze_contract logic
+    # Mutates request.json so analyze_contract() can be called directly, since it reads from the request
     request.json = {
         'contract_text': contract_text,
         'query': query,
@@ -303,7 +291,6 @@ if __name__ == '__main__':
     print("=" * 50)
     print("Initializing model and retriever...")
 
-    # Auto-initialize on startup
     model_result = initialize_model()
     retriever_result = initialize_retriever()
 

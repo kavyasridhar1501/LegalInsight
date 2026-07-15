@@ -224,7 +224,7 @@ class ReflectionTokenizer:
         all_tokens.extend(ISRELToken.get_all_tokens())
         all_tokens.extend(ISSUPToken.get_all_tokens())
         all_tokens.extend(ISUSEToken.get_all_tokens())
-        all_tokens.extend(PassageMarker.get_all_tokens())  # Add passage markers
+        all_tokens.extend(PassageMarker.get_all_tokens())
         return all_tokens
 
     @staticmethod
@@ -291,7 +291,6 @@ class ReflectionTokenizer:
         """
         annotation = ReflectionAnnotation()
 
-        # Extract intent token first
         for token in INTENTToken:
             if token.value in text:
                 annotation.intent = token
@@ -409,7 +408,6 @@ if __name__ == "__main__":
     print("\n4. ISUSE TOKENS:")
     print(ISUSEToken.get_description())
 
-    # Get all special tokens
     print("\n" + "=" * 80)
     print("\nAll special tokens for tokenizer:")
     all_tokens = ReflectionTokenizer.get_all_special_tokens()

@@ -66,7 +66,6 @@ class LegalBenchRAGLoader:
         self.queries_file = Path(queries_file)
         self.use_mini = use_mini
 
-        # Verify paths exist
         if not self.corpus_dir.exists():
             raise FileNotFoundError(f"Corpus directory not found: {corpus_dir}")
         if not self.queries_file.exists():
@@ -161,14 +160,12 @@ class LegalBenchRAGLoader:
         Returns:
             Sampled queries for mini version
         """
-        # Group by dataset
         by_dataset = {'ContractNLI': [], 'CUAD': [], 'MAUD': [], 'PrivacyQA': []}
         for query in queries:
             source = query.dataset_source
             if source in by_dataset:
                 by_dataset[source].append(query)
 
-        # Sample 194 from each
         import random
         random.seed(42)  # For reproducibility
 
@@ -271,12 +268,10 @@ class LegalBenchRAGLoader:
         Returns:
             Dictionary with corpus statistics
         """
-        # Count files in corpus
         all_files = list(self.corpus_dir.rglob('*.txt'))
         total_chars = sum(len(self.load_document(str(f.relative_to(self.corpus_dir))))
                          for f in all_files)
 
-        # Get query statistics
         datasets = {}
         for query in self.queries:
             source = query.dataset_source
