@@ -2,15 +2,15 @@
 
 **AI-Powered Legal Contract Analysis with Self-RAG and Hallucination Detection**
 
-🔗 **[Live Demo](https://kavyasridhar1501.github.io/LegalInsight-SelfRAG-HallucinationDetection/)**
+**[Live Demo](https://kavyasridhar1501.github.io/LegalInsight-SelfRAG-HallucinationDetection/)**
 
 ---
 
 ## What is LegalInsight?
 
-LegalInsight is an advanced AI-powered system that revolutionises legal contract analysis by combining **Self-RAG (Self-Reflective Retrieval-Augmented Generation)** with **hallucination detection**. It is powered by **[LangChain.js](https://js.langchain.com/)** running entirely in the browser.
+LegalInsight is an AI-powered system for legal contract analysis that combines **Self-RAG (Self-Reflective Retrieval-Augmented Generation)** with **hallucination detection**. It is powered by **[LangChain.js](https://js.langchain.com/)** running entirely in the browser.
 
-Upload contracts, ask questions in natural language, and receive instant, reliable analysis—all while tracking significant time savings compared to manual review.
+Upload contracts, ask questions in natural language, and receive analysis while tracking time savings compared to manual review.
 
 Built for legal professionals, LegalInsight provides:
 - **Smart document chunking** via LangChain's `RecursiveCharacterTextSplitter` (true client-side RAG)

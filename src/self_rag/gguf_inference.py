@@ -203,7 +203,7 @@ class SelfRAGGGUFInference:
         # Load single persistent model
         print(f"Loading Self-RAG model: {model_path}")
         self._llm = self._Llama(**self._gen_config)
-        print("✓ Model loaded (persistent, single instance for all operations)")
+        print("Model loaded (persistent, single instance for all operations)")
 
     def _get_gen_model(self):
         """
@@ -507,11 +507,9 @@ class SelfRAGGGUFInference:
                 - used_passage: The passage used for generation
                 - passage_score: Similarity score of used passage
         """
-        # Step 1: Retrieve passages
         results = retriever.retrieve(question, top_k=top_k)
 
         if not results:
-            # No passages found - generate without retrieval
             output = self.generate(question, passage=None, max_tokens=max_tokens)
             return {
                 'output': output,
@@ -519,13 +517,12 @@ class SelfRAGGGUFInference:
                 'used_passage': None,
             }
 
-        # Step 2: Use top passage (truncate to prevent context overflow)
+        # Truncate to prevent context overflow
         top_passage = results[0]['text']
         max_passage_len = 2000  # Safe limit with n_ctx=4096
         if len(top_passage) > max_passage_len:
             top_passage = top_passage[:max_passage_len] + "..."
 
-        # Step 3: Generate with passage
         output = self.generate(question, passage=top_passage, max_tokens=max_tokens)
 
         return {
@@ -655,9 +652,7 @@ class SelfRAGGGUFInference:
 
         return generations
 
-    # =========================================================================
-    # INSIDE Methods (EigenScore-based hallucination detection)
-    # =========================================================================
+    # -- INSIDE Methods (EigenScore-based hallucination detection) --
 
     def _compute_eigenscore(self, embeddings: List[np.ndarray]) -> float:
         """
@@ -827,11 +822,9 @@ class SelfRAGGGUFInference:
             Dict with 'output', 'used_passage', 'passage_score',
             'critique_score', and 'all_candidates' for analysis
         """
-        # Step 1: Retrieve K passages
         results = retriever.retrieve(question, top_k=top_k)
 
         if not results:
-            # No passages found, generate without retrieval
             output = self.generate(question, retriever=None, max_tokens=max_tokens)
             return {
                 'output': output,
@@ -841,19 +834,15 @@ class SelfRAGGGUFInference:
                 'all_candidates': [],
             }
 
-        # Step 2: Generate for each passage
         candidates = []
         for result in results:
             passage = result['text'][:1000]  # Truncate long passages
 
-            # Reset model state before each generation
             self._llm.reset()
             llm = self._get_gen_model()
 
-            # Generate with this passage
             output = self._generate_with_passage(llm, question, passage, max_tokens, temperature)
 
-            # Step 3: Compute critique score
             score = self._compute_critique_score(output, w_isrel, w_issup, w_isuse)
             candidates.append({
                 'output': output,
@@ -862,7 +851,6 @@ class SelfRAGGGUFInference:
                 'critique_score': score,
             })
 
-        # Step 4: Select best by critique score
         candidates.sort(key=lambda x: x['critique_score'], reverse=True)
         best = candidates[0]
 
@@ -933,12 +921,10 @@ class SelfRAGGGUFInference:
         generations: List[SelfRAGOutput] = []
         embeddings: List[np.ndarray] = []
 
-        # Step 1: Determine if retrieval is needed using adaptive check (like Self-RAG)
         used_passage = passage
         retrieval_score = None
 
         if used_passage is None and retriever is not None:
-            # Use adaptive retrieval check like regular Self-RAG
             needs_retrieval, retrieval_score = self._check_retrieval_needed(
                 question, threshold=retrieval_threshold
             )
@@ -947,23 +933,19 @@ class SelfRAGGGUFInference:
                 if results:
                     used_passage = results[0]['text']
 
-        # Step 2: Generate K responses using persistent model with reset()
         llm = self._get_gen_model()  # Persistent model, reset internally
 
         for i in range(num_generations):
-            # Reset KV cache between generations (except first, already reset)
             if i > 0:
                 self._llm.reset()
 
             if used_passage:
-                # Generate with passage
                 result = self._generate_with_passage(
                     llm, question, used_passage, max_tokens, temperature
                 )
                 result.retrieve = "[Retrieval]"
                 result.retrieval_score = retrieval_score if retrieval_score else 1.0
             else:
-                # Generate without passage
                 # Per official impl: append [No Retrieval] to guide model
                 prompt = self._format_prompt(question, passage=None, no_retrieval=True)
                 output = llm(
@@ -982,22 +964,15 @@ class SelfRAGGGUFInference:
 
             generations.append(result)
 
-            # Get embedding using EXTERNAL encoder (sentence-transformers)
             if result.answer:
                 emb = embedding_model.encode(result.answer)
-                # Squeeze to 1D - encode returns (1, dim) for single text
+                # encode() returns (1, dim) for single text - squeeze to 1D
                 embeddings.append(np.array(emb).squeeze())
 
-        # Compute EigenScore
         eigenscore = self._compute_eigenscore(embeddings) if embeddings else 0.0
-
-        # Detect hallucination
         hallucination_detected = eigenscore > eigenscore_threshold
-
-        # Select best generation
         best_gen = self._select_best_generation(generations)
 
-        # Create extended output
         return SelfRAGOutputWithEigenScore(
             answer=best_gen.answer,
             retrieve=best_gen.retrieve,

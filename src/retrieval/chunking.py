@@ -78,7 +78,6 @@ class RecursiveCharacterTextSplitter:
             List of (chunk_text, start_char, end_char) tuples where positions
             are relative to the original text
         """
-        # Use modified recursive splitting that tracks positions
         return self._split_text_with_positions_recursive(text, self.separators, offset=0)
 
     def _split_text_with_positions_recursive(
@@ -100,7 +99,6 @@ class RecursiveCharacterTextSplitter:
         """
         final_chunks = []
 
-        # Get the separator to use
         separator = separators[-1] if separators else ""
         new_separators = []
 
@@ -113,10 +111,8 @@ class RecursiveCharacterTextSplitter:
                 new_separators = separators[i + 1:]
                 break
 
-        # Split by the separator and track positions
         splits_with_pos = self._split_by_separator_with_positions(text, separator, offset)
 
-        # Merge splits into chunks
         good_splits = []
         current_pos = offset
 
@@ -124,7 +120,6 @@ class RecursiveCharacterTextSplitter:
             if len(split_text) < self.chunk_size:
                 good_splits.append((split_text, split_start, split_end))
             else:
-                # Split is too large, process accumulated splits first
                 if good_splits:
                     merged = self._merge_splits_with_positions(good_splits, separator)
                     final_chunks.extend(merged)
@@ -132,17 +127,14 @@ class RecursiveCharacterTextSplitter:
 
                 if not new_separators:
                     # No more separators, force split by character
-                    # Just take first chunk_size characters
                     chunk_text = split_text[:self.chunk_size]
                     final_chunks.append((chunk_text, split_start, split_start + len(chunk_text)))
                 else:
-                    # Recursively split with next separator
                     recursive_chunks = self._split_text_with_positions_recursive(
                         split_text, new_separators, offset=split_start
                     )
                     final_chunks.extend(recursive_chunks)
 
-        # Merge remaining splits
         if good_splits:
             merged = self._merge_splits_with_positions(good_splits, separator)
             final_chunks.extend(merged)
@@ -231,16 +223,14 @@ class RecursiveCharacterTextSplitter:
         for split_text, split_start, split_end in splits_with_pos:
             split_length = len(split_text)
 
-            # Check if adding this split would exceed chunk_size
             if current_length + split_length + len(separator) > self.chunk_size:
                 if current_splits:
-                    # Save current chunk
                     chunk_text = separator.join([s[0] for s in current_splits]) if separator != "" else "".join([s[0] for s in current_splits])
                     chunk_start = current_splits[0][1]  # Start of first split
                     chunk_end = current_splits[-1][2]   # End of last split
                     chunks.append((chunk_text, chunk_start, chunk_end))
 
-                    # Start new chunk with overlap
+                    # Keep last few splits for overlap
                     overlap_length = 0
                     overlap_splits = []
                     for prev_split in reversed(current_splits):
@@ -260,7 +250,6 @@ class RecursiveCharacterTextSplitter:
                 current_splits.append((split_text, split_start, split_end))
                 current_length += split_length + (len(separator) if current_splits else 0)
 
-        # Add the last chunk
         if current_splits:
             chunk_text = separator.join([s[0] for s in current_splits]) if separator != "" else "".join([s[0] for s in current_splits])
             chunk_start = current_splits[0][1]  # Start of first split
@@ -282,7 +271,6 @@ class RecursiveCharacterTextSplitter:
         """
         final_chunks = []
 
-        # Get the separator to use
         separator = separators[-1] if separators else ""
         new_separators = []
 
@@ -295,16 +283,14 @@ class RecursiveCharacterTextSplitter:
                 new_separators = separators[i + 1:]
                 break
 
-        # Split by the separator
         splits = self._split_by_separator(text, separator)
 
-        # Merge splits into chunks
         good_splits = []
         for split in splits:
             if len(split) < self.chunk_size:
                 good_splits.append(split)
             else:
-                # Split is too large, recursively split with next separator
+                # Split too large - recurse with next separator
                 if good_splits:
                     merged = self._merge_splits(good_splits, separator)
                     final_chunks.extend(merged)
@@ -314,11 +300,9 @@ class RecursiveCharacterTextSplitter:
                     # No more separators, force split by character
                     final_chunks.append(split[:self.chunk_size])
                 else:
-                    # Try next separator
                     recursive_chunks = self._split_text_recursive(split, new_separators)
                     final_chunks.extend(recursive_chunks)
 
-        # Merge remaining splits
         if good_splits:
             merged = self._merge_splits(good_splits, separator)
             final_chunks.extend(merged)
@@ -377,14 +361,11 @@ class RecursiveCharacterTextSplitter:
         for split in splits:
             split_length = len(split)
 
-            # Check if adding this split would exceed chunk_size
             if current_length + split_length + len(separator) > self.chunk_size:
                 if current_chunk:
-                    # Save current chunk
                     chunk_text = separator.join(current_chunk) if separator != "" else "".join(current_chunk)
                     chunks.append(chunk_text)
 
-                    # Start new chunk with overlap
                     # Keep last few splits for overlap
                     overlap_length = 0
                     overlap_chunks = []
@@ -405,7 +386,6 @@ class RecursiveCharacterTextSplitter:
                 current_chunk.append(split)
                 current_length += split_length + (len(separator) if current_chunk else 0)
 
-        # Add the last chunk
         if current_chunk:
             chunk_text = separator.join(current_chunk) if separator != "" else "".join(current_chunk)
             chunks.append(chunk_text)
@@ -453,7 +433,6 @@ class DocumentChunker:
         if metadata is None:
             metadata = {}
 
-        # Use position-aware chunking if requested
         if track_positions:
             chunks_with_pos = self.splitter.split_text_with_positions(text)
         else:
@@ -477,7 +456,7 @@ class DocumentChunker:
                 'chunk_count': len(chunks_with_pos),
                 'start_char': start_char,  # Character position in original document
                 'end_char': end_char,      # End position in original document
-                **metadata  # Include original metadata
+                **metadata
             }
             chunk_dicts.append(chunk_dict)
 
@@ -510,7 +489,6 @@ class DocumentChunker:
             metadata = {k: v for k, v in doc.items() if k != 'text'}
             metadata['doc_id'] = doc_id
 
-            # Positions will be per-document (starting from 0 for each doc)
             chunks = self.chunk_document(text, metadata, track_positions=track_positions)
             all_chunks.extend(chunks)
 

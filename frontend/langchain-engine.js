@@ -18,7 +18,7 @@ import { ChatPromptTemplate } from 'https://esm.sh/@langchain/core@0.3/prompts';
 import { HumanMessage, AIMessage } from 'https://esm.sh/@langchain/core@0.3/messages';
 import { RecursiveCharacterTextSplitter } from 'https://esm.sh/@langchain/textsplitters@0.1';
 
-// ─── Document Chunker ────────────────────────────────────────────────────────
+// Document Chunker
 
 const textSplitter = new RecursiveCharacterTextSplitter({
     chunkSize: 2000,
@@ -26,7 +26,7 @@ const textSplitter = new RecursiveCharacterTextSplitter({
     separators: ['\n\n\n', '\n\n', '\n', '. ', '! ', '? ', '; ', ', ', ' ', '']
 });
 
-// ─── Prompt Templates ────────────────────────────────────────────────────────
+// Prompt Templates
 
 const LEGAL_SYSTEM = `You are a senior legal analyst specialising in contract law. \
 You read contracts carefully and answer questions with precision.
@@ -80,7 +80,7 @@ Contract:
     ]
 ]);
 
-// ─── Chunk Selection ─────────────────────────────────────────────────────────
+// Chunk Selection
 
 const STOPWORDS = new Set([
     'what', 'when', 'where', 'who', 'how', 'why', 'which',
@@ -156,7 +156,7 @@ async function getRelevantChunks(contractText, query, maxChunks = 4) {
     };
 }
 
-// ─── Semantic Consistency (Jaccard) ──────────────────────────────────────────
+// Semantic Consistency (Jaccard)
 
 function tokenize(text) {
     return new Set(
@@ -195,7 +195,7 @@ function calculateSemanticConsistency(responses) {
     return Math.round(Math.max(40, Math.min(100, avg * 100)));
 }
 
-// ─── Message Formatting ───────────────────────────────────────────────────────
+// Message Formatting
 
 /** Converts LangChain BaseMessage[] → plain {role, content}[] for provider APIs. */
 function lcToPlain(messages) {
@@ -246,7 +246,7 @@ async function formatExtractionMessages(contractText) {
     return lcToPlain(lcMessages);
 }
 
-// ─── Structured Data Parsing & Rendering ─────────────────────────────────────
+// Structured Data Parsing & Rendering
 
 function parseStructuredData(text) {
     try {
@@ -296,7 +296,7 @@ function renderStructuredData(data) {
 </div>`;
 }
 
-// ─── Export to global scope ───────────────────────────────────────────────────
+// Export to global scope
 
 window.LegalInsightLC = {
     getRelevantChunks,

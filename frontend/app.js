@@ -5,21 +5,21 @@
  * Falls back gracefully if the LangChain module hasn't loaded yet.
  */
 
-// ─── PDF.js setup ────────────────────────────────────────────────────────────
+// PDF.js setup
 
 if (typeof pdfjsLib !== 'undefined') {
     pdfjsLib.GlobalWorkerOptions.workerSrc =
         'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 }
 
-// ─── State ───────────────────────────────────────────────────────────────────
+// State
 
 let currentPDFText = '';
 let conversationHistory = [];   // [{role: 'user'|'assistant', content: string}]
 let lastContractText   = '';    // contract used for current analysis (for follow-ups)
 let analytics = { totalAnalyses: 0, totalTimeSaved: 0, totalEfficiency: 0 };
 
-// ─── LangChain engine accessor ───────────────────────────────────────────────
+// LangChain engine accessor
 
 /**
  * Returns the LangChain engine once the module has loaded.
@@ -36,7 +36,7 @@ async function getLCEngine(timeout = 6000) {
     });
 }
 
-// ─── Initialisation ──────────────────────────────────────────────────────────
+// Initialisation
 
 window.addEventListener('DOMContentLoaded', function () {
     loadSettings();
@@ -106,7 +106,7 @@ function saveApiKey() {
     statusEl.className = 'success';
 }
 
-// ─── Drag-and-drop ───────────────────────────────────────────────────────────
+// Drag-and-drop
 
 function setupDragAndDrop() {
     const uploadBox = document.getElementById('upload-box');
@@ -129,7 +129,7 @@ function setupDragAndDrop() {
     });
 }
 
-// ─── PDF handling ─────────────────────────────────────────────────────────────
+// PDF handling
 
 async function handlePDFUpload(event) {
     const file = event.target.files[0];
@@ -175,7 +175,7 @@ function clearFile() {
     hide('file-info');
 }
 
-// ─── Main analysis flow ───────────────────────────────────────────────────────
+// Main analysis flow
 
 async function analyzeContract() {
     const contractText = getContractText();
@@ -222,7 +222,7 @@ async function performAnalysis(contractText, query) {
     try {
         const lc = await getLCEngine();
 
-        // ── Step 1: chunk + find relevant context ──────────────────────────
+        // Step 1: chunk + find relevant context
         let context = contractText;
         let chunkInfo = null;
 
@@ -233,14 +233,14 @@ async function performAnalysis(contractText, query) {
             chunkInfo = { used: result.used, total: result.total };
         }
 
-        // ── Step 2: format messages with LangChain prompt template ─────────
+        // Step 2: format messages with LangChain prompt template
         let messagesTemplate = null;
         if (lc) {
             setLoading(true, 'Formatting prompt with LangChain...');
             messagesTemplate = await lc.formatAnalysisMessages(context, query);
         }
 
-        // ── Step 3: three generations for consistency scoring ──────────────
+        // Step 3: three generations for consistency scoring
         setLoading(true, 'Generating analysis (1/3)...');
         const r1 = await callAI(provider, apiKey, contractText, query, 0.1, messagesTemplate);
 
@@ -252,12 +252,12 @@ async function performAnalysis(contractText, query) {
 
         const totalTime = (Date.now() - startTime) / 1000;
 
-        // ── Step 4: consistency score ──────────────────────────────────────
+        // Step 4: consistency score
         const consistencyScore = lc
             ? lc.calculateSemanticConsistency([r1, r2, r3])
             : calculateConsistencyFallback([r1, r2, r3]);
 
-        // ── Step 5: store primary in conversation history ──────────────────
+        // Step 5: store primary in conversation history
         conversationHistory.push({ role: 'user',      content: query });
         conversationHistory.push({ role: 'assistant', content: r1   });
 
@@ -282,7 +282,7 @@ async function performAnalysis(contractText, query) {
     }
 }
 
-// ─── Follow-up questions ──────────────────────────────────────────────────────
+// Follow-up questions
 
 async function askFollowUp() {
     const input = getValue('followup-input').trim();
@@ -347,7 +347,7 @@ function clearConversation() {
     if (container) container.innerHTML = '';
 }
 
-// ─── Structured key-terms extraction ─────────────────────────────────────────
+// Structured key-terms extraction
 
 async function extractKeyTerms() {
     const contractText = lastContractText || getContractText();
@@ -415,7 +415,7 @@ function renderFallbackStructuredData(data) {
     return `<pre style="white-space:pre-wrap;font-size:0.9em">${JSON.stringify(data, null, 2)}</pre>`;
 }
 
-// ─── Provider routing ─────────────────────────────────────────────────────────
+// Provider routing
 
 /**
  * Routes to the appropriate provider.
@@ -461,7 +461,7 @@ function buildFallbackMessages(contractText, query) {
     ];
 }
 
-// ─── Provider implementations ─────────────────────────────────────────────────
+// Provider implementations
 
 async function callOpenAI(apiKey, messages, temperature) {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -637,7 +637,7 @@ async function callMistral(apiKey, messages, temperature) {
     return data.choices[0].message.content;
 }
 
-// ─── Demo mode ───────────────────────────────────────────────────────────────
+// Demo mode
 
 function generateDemoResponse(contractText, query) {
     return new Promise(resolve => {
@@ -673,7 +673,7 @@ function detectContractType(text) {
     return 'General Contract';
 }
 
-// ─── Consistency scoring (fallback) ──────────────────────────────────────────
+// Consistency scoring (fallback)
 
 function calculateConsistencyFallback(responses) {
     const lengths   = responses.map(r => r.length);
@@ -682,7 +682,7 @@ function calculateConsistencyFallback(responses) {
     return Math.min(100, Math.max(60, 100 - (variance / avg * 100)));
 }
 
-// ─── Display logic ────────────────────────────────────────────────────────────
+// Display logic
 
 function displayResults(data) {
     const manualTime = estimateManualTime(data.contractLength);
@@ -717,7 +717,6 @@ function displayResults(data) {
         : 'Fair – Some variation detected, verify carefully';
     setText('consistency-interpretation', interp);
 
-    // Method badge
     const badge = document.getElementById('consistency-method');
     if (badge) {
         badge.textContent = data.lcEnabled
@@ -730,7 +729,6 @@ function displayResults(data) {
     setText('contract-length',  data.contractLength.toLocaleString() + ' characters');
     setText('estimated-pages',  Math.round(data.contractLength / 3000) + ' pages');
 
-    // Chunk info
     const chunkEl = document.getElementById('chunk-info');
     if (chunkEl) {
         if (data.chunkInfo && data.chunkInfo.total > 1) {
@@ -743,7 +741,6 @@ function displayResults(data) {
         }
     }
 
-    // Alternative responses
     const altDiv = document.getElementById('alternatives-content');
     if (altDiv) {
         altDiv.innerHTML = '';
@@ -758,12 +755,11 @@ function displayResults(data) {
     show('results-section');
     document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
 
-    // Show follow-up and extract sections
     show('followup-section');
     hide('structured-data-section');
 }
 
-// ─── Analytics ───────────────────────────────────────────────────────────────
+// Analytics
 
 function estimateManualTime(contractLength) {
     return (contractLength / 3000) * 7.5 * 60;  // seconds
@@ -803,7 +799,7 @@ function clearAnalytics() {
 }
 function refreshAnalytics() { displayAnalytics(); }
 
-// ─── Utility functions ────────────────────────────────────────────────────────
+// Utility functions
 
 function getContractText() {
     const el = document.getElementById('contract-text');

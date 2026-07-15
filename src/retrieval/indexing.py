@@ -65,7 +65,6 @@ class VectorIndex:
         else:
             raise ValueError(f"Unknown index type: {self.index_type}")
 
-        # Move to GPU if requested and available
         if self.use_gpu and faiss.get_num_gpus() > 0:
             self.index = faiss.index_cpu_to_gpu(faiss.StandardGpuResources(), 0, self.index)
             print("Index moved to GPU")
@@ -89,16 +88,13 @@ class VectorIndex:
         if embeddings.dtype != np.float32:
             embeddings = embeddings.astype(np.float32)
 
-        # Train index if needed (for IVF indexes)
         if isinstance(self.index, faiss.IndexIVFFlat) and not self.index.is_trained:
             print("Training IVF index...")
             self.index.train(embeddings)
             print("Index trained")
 
-        # Add embeddings
         self.index.add(embeddings)
 
-        # Store documents
         if documents is not None:
             self.documents.extend(documents)
         else:
@@ -130,7 +126,6 @@ class VectorIndex:
         if query_embeddings.dtype != np.float32:
             query_embeddings = query_embeddings.astype(np.float32)
 
-        # Ensure 2D array
         if query_embeddings.ndim == 1:
             query_embeddings = query_embeddings.reshape(1, -1)
 
@@ -176,9 +171,8 @@ class VectorIndex:
             index_path: Path to save FAISS index (.faiss file)
             documents_path: Path to save documents (.pkl file)
         """
-        # Save FAISS index
         if self.use_gpu:
-            # Move to CPU before saving
+            # Move to CPU before saving - GPU indexes can't be serialized directly
             index_cpu = faiss.index_gpu_to_cpu(self.index)
             faiss.write_index(index_cpu, index_path)
         else:
@@ -186,7 +180,6 @@ class VectorIndex:
 
         print(f"Index saved to {index_path}")
 
-        # Save documents
         if documents_path is None:
             documents_path = index_path.replace('.faiss', '_documents.pkl')
 
@@ -203,7 +196,6 @@ class VectorIndex:
             index_path: Path to FAISS index file
             documents_path: Path to documents pickle file
         """
-        # Load FAISS index
         self.index = faiss.read_index(index_path)
 
         if self.use_gpu and faiss.get_num_gpus() > 0:
@@ -212,7 +204,6 @@ class VectorIndex:
         print(f"Index loaded from {index_path}")
         print(f"Total documents in index: {self.index.ntotal}")
 
-        # Load documents
         if documents_path is None:
             documents_path = index_path.replace('.faiss', '_documents.pkl')
 
@@ -267,17 +258,13 @@ def build_index_from_documents(
     Returns:
         Built VectorIndex instance
     """
-    # Create output directory
     os.makedirs(output_dir, exist_ok=True)
 
-    # Create index
     embedding_dim = embeddings.shape[1]
     index = create_index_from_config(config, embedding_dim)
 
-    # Add documents
     index.add(embeddings, documents)
 
-    # Save index
     index_path = os.path.join(output_dir, "faiss_index.faiss")
     documents_path = os.path.join(output_dir, "documents.pkl")
     index.save(index_path, documents_path)
@@ -289,7 +276,6 @@ if __name__ == "__main__":
     # Example usage
     print("Creating test index...")
 
-    # Create dummy embeddings and documents
     embedding_dim = 384
     n_docs = 100
 
@@ -306,11 +292,9 @@ if __name__ == "__main__":
         for i in range(n_docs)
     ]
 
-    # Create index
     index = VectorIndex(embedding_dim=embedding_dim, index_type="IndexFlatIP")
     index.add(embeddings, documents)
 
-    # Test search
     query_embedding = np.random.randn(1, embedding_dim).astype(np.float32)
     query_embedding = query_embedding / np.linalg.norm(query_embedding)
 
@@ -320,7 +304,6 @@ if __name__ == "__main__":
     for i, doc in enumerate(results[0]):
         print(f"{i+1}. Score: {doc['score']:.4f}, Text: {doc['text']}")
 
-    # Test save/load
     print("\nTesting save/load...")
     index.save("test_index.faiss")
 

@@ -9,7 +9,6 @@ echo "This script will help you download the full LegalBench-RAG dataset."
 echo "Dataset size: ~6,858 queries over 79 million characters"
 echo ""
 
-# Create data directory
 mkdir -p legalbench_full
 
 echo "Step 1: Download Dataset from Dropbox"
@@ -30,16 +29,14 @@ echo "  └── benchmarks/   (contains .json files with queries)"
 echo ""
 read -p "Press Enter when you have completed the download and extraction..."
 
-# Verify the structure
 echo ""
 echo "Step 2: Verifying Dataset Structure"
 echo "------------------------------------"
 
 if [ -d "legalbench_full/corpus" ] && [ -d "legalbench_full/benchmarks" ]; then
-    echo "✓ Found corpus directory"
-    echo "✓ Found benchmarks directory"
+    echo "Found corpus directory"
+    echo "Found benchmarks directory"
 
-    # Count files
     corpus_files=$(find legalbench_full/corpus -type f -name "*.txt" | wc -l)
     benchmark_files=$(find legalbench_full/benchmarks -type f -name "*.json" | wc -l)
 
@@ -50,18 +47,18 @@ if [ -d "legalbench_full/corpus" ] && [ -d "legalbench_full/benchmarks" ]; then
 
     if [ $benchmark_files -gt 0 ]; then
         echo ""
-        echo "✓ Dataset is ready!"
+        echo "Dataset is ready"
         echo ""
         echo "You can now run the notebook with:"
         echo "  jupyter notebook performance_evaluation.ipynb"
     else
         echo ""
-        echo "✗ Error: No benchmark files found!"
+        echo "Error: No benchmark files found"
         echo "Please check that you extracted the files correctly."
         exit 1
     fi
 else
-    echo "✗ Error: Dataset directories not found!"
+    echo "Error: Dataset directories not found"
     echo ""
     echo "Please ensure you have:"
     echo "  1. Downloaded the dataset from the Dropbox link"
@@ -72,5 +69,5 @@ fi
 
 echo ""
 echo "=========================================="
-echo "Setup Complete!"
+echo "Setup Complete"
 echo "=========================================="
