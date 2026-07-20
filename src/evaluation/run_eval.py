@@ -54,14 +54,15 @@ def build_retrieval_only_records(examples, embedding_model_name, top_k):
     return records
 
 
-def build_generation_records(examples, model_path, top_k):
+def build_generation_records(examples, model_path, top_k, max_tokens=200):
     from src.self_rag.gguf_inference import SelfRAGGGUFInference
 
     inference = SelfRAGGGUFInference(model_path=model_path)
     records = []
-    for ex in examples:
+    for i, ex in enumerate(examples):
+        print(f"  generating {i + 1}/{len(examples)}...", file=sys.stderr)
         start = time.time()
-        output = inference.generate(ex["question"], passage=ex.get("passage"))
+        output = inference.generate(ex["question"], passage=ex.get("passage"), max_tokens=max_tokens)
         latency = time.time() - start
         records.append(EvalRecord(
             query=ex["question"],
@@ -91,6 +92,8 @@ def main():
         "--with-generation", action="store_true",
         help="Also run the Self-RAG generation pipeline (requires SELFRAG_MODEL_PATH)",
     )
+    parser.add_argument("--max-tokens", type=int, default=200,
+                         help="Max generation tokens per example (bounds CPU inference time)")
     args = parser.parse_args()
 
     examples = load_golden_dataset(path=args.dataset, sample_size=args.sample_size, seed=args.seed)
@@ -99,7 +102,7 @@ def main():
     model_path = os.getenv("SELFRAG_MODEL_PATH")
     if args.with_generation and model_path and os.path.exists(model_path):
         print(f"Running full generation eval with model at {model_path}")
-        records = build_generation_records(examples, model_path, args.top_k)
+        records = build_generation_records(examples, model_path, args.top_k, args.max_tokens)
     else:
         if args.with_generation:
             print(
