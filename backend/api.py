@@ -102,10 +102,7 @@ def initialize_retriever():
             device=config['embedding'].get('device', 'cpu')
         )
 
-        chunker = DocumentChunker(
-            chunk_size=config['chunking']['chunk_size'],
-            chunk_overlap=config['chunking']['chunk_overlap']
-        )
+        chunker = DocumentChunker(config['chunking'])
 
         retriever = LegalRetriever(
             embedding_model=embedding_model,

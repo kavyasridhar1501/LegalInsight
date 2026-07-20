@@ -37,6 +37,7 @@
                         <option value="cohere">Cohere (Command R+)</option>
                         <option value="mistral">Mistral Large</option>
                         <option value="demo">Demo Mode (No API Key Required)</option>
+                        <option value="reliability-backend">Self-RAG Reliability Backend (Guardrails + Self-Healing)</option>
                     </select>
                 </div>
                 <div class="form-group" id="api-key-section">
@@ -51,6 +52,24 @@
                         <br>Get your API key:
                         <a href="https://platform.openai.com/api-keys" target="_blank"
                            id="api-link">OpenAI</a>
+                    </p>
+                </div>
+                <div class="form-group" id="backend-url-section" style="display:none">
+                    <label for="backend-url">Reliability Backend URL:</label>
+                    <input type="text" id="backend-url" placeholder="http://localhost:5000">
+                    <button onclick="saveBackendUrl()" class="btn btn-secondary">Save URL</button>
+                    <button onclick="initializeBackend()" class="btn btn-outline btn-sm" id="init-backend-btn">
+                        Initialize Backend
+                    </button>
+                    <span id="backend-status"></span>
+                    <p class="help-text">
+                        Routes analysis through the LegalInsight Python backend instead of a direct
+                        provider call: a self-healing retrieve &rarr; generate &rarr; critique &rarr; retry
+                        loop, PII &amp; prompt-injection guardrails on input, and schema/toxicity/policy
+                        checks on output. Requires running <code>backend/api.py</code> yourself (locally,
+                        or deployed with the included <code>render.yaml</code> / <code>railway.toml</code>)
+                        with the Self-RAG model downloaded to <code>data/models/</code>. Click
+                        "Initialize Backend" once after entering the URL.
                     </p>
                 </div>
             </div>
@@ -159,8 +178,23 @@ Example: This Agreement is entered into on January 1, 2024, between Company A an
                     </button>
                 </div>
 
+                <!-- Guardrails & Self-Healing (Reliability Backend mode only) -->
+                <div id="reliability-section" style="display:none">
+                    <div class="answer-section">
+                        <h3>🛡️ Guardrails</h3>
+                        <div id="guardrails-status"></div>
+                    </div>
+                    <div class="alternatives-section">
+                        <h3>🔁 Self-Healing Trace</h3>
+                        <button onclick="toggleHealingTrace()" class="btn btn-outline btn-sm">
+                            Show / Hide
+                        </button>
+                        <div id="healing-trace-content" style="display:none"></div>
+                    </div>
+                </div>
+
                 <!-- Hallucination / consistency analysis -->
-                <div class="eigenscore-section">
+                <div class="eigenscore-section" id="eigenscore-section">
                     <h3>🎯 Hallucination Analysis</h3>
                     <div class="eigenscore-details">
                         <div class="consistency-bar">
@@ -206,7 +240,7 @@ Example: This Agreement is entered into on January 1, 2024, between Company A an
                 </div>
 
                 <!-- Verification responses -->
-                <div class="alternatives-section">
+                <div class="alternatives-section" id="alternatives-section">
                     <h3>🔄 Verification Responses</h3>
                     <button onclick="toggleAlternatives()"
                             class="btn btn-outline btn-sm">
