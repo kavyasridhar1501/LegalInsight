@@ -32,10 +32,10 @@ setup(
         "transformers>=4.30.0",
         "sentence-transformers>=2.2.0",
         "datasets>=2.14.0",
-        "llama-cpp-python>=0.2.0",
         "faiss-cpu>=1.7.4",
         "langchain>=0.1.0",
         "langgraph>=0.2.0",
+        "requests>=2.28.0",
         "flask>=2.3.0",
         "flask-cors>=4.0.0",
         "pandas>=2.0.0",
@@ -47,5 +47,6 @@ setup(
     ],
     extras_require={
         "dev": ["pytest>=7.4.0", "jupyter>=1.0.0", "notebook>=7.0.0"],
+        "local_model": ["llama-cpp-python>=0.2.0"],
     },
 )

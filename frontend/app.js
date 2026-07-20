@@ -19,6 +19,11 @@ let conversationHistory = [];   // [{role: 'user'|'assistant', content: string}]
 let lastContractText   = '';    // contract used for current analysis (for follow-ups)
 let analytics = { totalAnalyses: 0, totalTimeSaved: 0, totalEfficiency: 0 };
 
+// Fill in once the backend is deployed (e.g. to Railway) so visitors get a
+// working Self-RAG backend out of the box, with no setup of their own.
+// Leave empty to require everyone to enter their own backend URL.
+const DEFAULT_BACKEND_URL = '';
+
 // LangChain engine accessor
 
 /**
@@ -42,11 +47,25 @@ window.addEventListener('DOMContentLoaded', function () {
     loadSettings();
     loadAnalytics();
     setupDragAndDrop();
+
+    // If a deployed backend is configured and it's the active provider,
+    // initialise it automatically so first-time visitors don't have to
+    // find and click the button before anything works.
+    if (DEFAULT_BACKEND_URL && getValue('api-provider') === 'reliability-backend') {
+        initializeBackend();
+    }
 });
 
 function loadSettings() {
-    const provider   = localStorage.getItem('api_provider') || 'openai';
-    const apiKey     = localStorage.getItem('api_key') || '';
+    const provider = localStorage.getItem('api_provider') || 'reliability-backend';
+    const apiKey    = localStorage.getItem('api_key') || '';
+
+    // Seed localStorage with the deployed default on first visit, so the
+    // Self-RAG backend works immediately with no setup -- not just prefill
+    // the input box (which alone wouldn't persist until "Save URL" is clicked).
+    if (!localStorage.getItem('backend_url') && DEFAULT_BACKEND_URL) {
+        localStorage.setItem('backend_url', DEFAULT_BACKEND_URL);
+    }
     const backendUrl = localStorage.getItem('backend_url') || '';
 
     const providerEl = document.getElementById('api-provider');

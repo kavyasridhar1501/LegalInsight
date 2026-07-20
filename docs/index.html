@@ -15,10 +15,11 @@
         <header>
             <h1>⚖️ LegalInsight</h1>
             <p class="description">
-                LLM-powered contract analysis using Self-RAG and hallucination detection.
-                Powered by <strong>LangChain.js</strong> for smart document chunking,
-                structured prompt management, and semantic consistency scoring —
-                running entirely in your browser.
+                LLM-powered contract analysis using Self-RAG: real document retrieval,
+                a self-healing critique-and-retry loop, and PII/injection guardrails —
+                served by the LegalInsight backend. An advanced mode that runs entirely
+                in your browser via <strong>LangChain.js</strong> (no retrieval, no
+                guardrails) is also available if you'd rather bring your own API key.
             </p>
         </header>
 
@@ -30,32 +31,18 @@
                 <div class="form-group">
                     <label for="api-provider">Choose AI Provider:</label>
                     <select id="api-provider" onchange="updateApiConfig()">
-                        <option value="openai">OpenAI (GPT-4o)</option>
-                        <option value="anthropic">Anthropic (Claude 3.5 Sonnet)</option>
-                        <option value="gemini">Google Gemini 1.5 Pro</option>
-                        <option value="groq">Groq (Llama 3.1)</option>
-                        <option value="cohere">Cohere (Command R+)</option>
-                        <option value="mistral">Mistral Large</option>
+                        <option value="reliability-backend">⭐ Self-RAG (Recommended — retrieval + guardrails + self-healing)</option>
                         <option value="demo">Demo Mode (No API Key Required)</option>
-                        <option value="reliability-backend">Self-RAG Reliability Backend (Guardrails + Self-Healing)</option>
+                        <option value="openai">Advanced: OpenAI directly (GPT-4o, no RAG)</option>
+                        <option value="anthropic">Advanced: Anthropic directly (Claude 3.5 Sonnet, no RAG)</option>
+                        <option value="gemini">Advanced: Google Gemini directly (no RAG)</option>
+                        <option value="groq">Advanced: Groq directly (Llama 3.1, no RAG)</option>
+                        <option value="cohere">Advanced: Cohere directly (Command R+, no RAG)</option>
+                        <option value="mistral">Advanced: Mistral directly (Mistral Large, no RAG)</option>
                     </select>
                 </div>
-                <div class="form-group" id="api-key-section">
-                    <label for="api-key">API Key:</label>
-                    <input type="password" id="api-key"
-                           placeholder="Enter your API key (stored locally only)">
-                    <button onclick="saveApiKey()" class="btn btn-secondary">Save Key</button>
-                    <span id="api-status"></span>
-                    <p class="help-text">
-                        Your API key is stored locally in your browser and never sent anywhere
-                        except directly to the AI provider.
-                        <br>Get your API key:
-                        <a href="https://platform.openai.com/api-keys" target="_blank"
-                           id="api-link">OpenAI</a>
-                    </p>
-                </div>
                 <div class="form-group" id="backend-url-section" style="display:none">
-                    <label for="backend-url">Reliability Backend URL:</label>
+                    <label for="backend-url">Self-RAG Backend URL:</label>
                     <input type="text" id="backend-url" placeholder="http://localhost:5000">
                     <button onclick="saveBackendUrl()" class="btn btn-secondary">Save URL</button>
                     <button onclick="initializeBackend()" class="btn btn-outline btn-sm" id="init-backend-btn">
@@ -63,13 +50,29 @@
                     </button>
                     <span id="backend-status"></span>
                     <p class="help-text">
-                        Routes analysis through the LegalInsight Python backend instead of a direct
-                        provider call: a self-healing retrieve &rarr; generate &rarr; critique &rarr; retry
-                        loop, PII &amp; prompt-injection guardrails on input, and schema/toxicity/policy
-                        checks on output. Requires running <code>backend/api.py</code> yourself (locally,
-                        or deployed with the included <code>render.yaml</code> / <code>railway.toml</code>)
-                        with the Self-RAG model downloaded to <code>data/models/</code>. Click
-                        "Initialize Backend" once after entering the URL.
+                        Routes analysis through the LegalInsight backend: real document retrieval, a
+                        self-healing retrieve &rarr; generate &rarr; critique &rarr; retry loop, and
+                        PII/injection/policy guardrails on both input and output. By default the backend
+                        generates via a hosted LLM API (fast, no model download); set
+                        <code>GENERATION_BACKEND=local_gguf</code> on the backend if you want the local
+                        Self-RAG model instead. This field defaults to the deployed backend below &mdash;
+                        change it only if you're running your own (e.g. <code>http://localhost:5000</code>
+                        for local development).
+                    </p>
+                </div>
+                <div class="form-group" id="api-key-section" style="display:none">
+                    <label for="api-key">API Key:</label>
+                    <input type="password" id="api-key"
+                           placeholder="Enter your API key (stored locally only)">
+                    <button onclick="saveApiKey()" class="btn btn-secondary">Save Key</button>
+                    <span id="api-status"></span>
+                    <p class="help-text">
+                        Advanced/legacy mode: calls the provider directly from your browser, bypassing
+                        retrieval, guardrails, and self-healing entirely. Your API key is stored locally
+                        and never sent anywhere except directly to the AI provider.
+                        <br>Get your API key:
+                        <a href="https://platform.openai.com/api-keys" target="_blank"
+                           id="api-link">OpenAI</a>
                     </p>
                 </div>
             </div>

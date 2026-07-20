@@ -16,6 +16,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.self_rag.gguf_inference import SelfRAGGGUFInference, compute_eigenscore
+from src.self_rag.llm_api_inference import LLMAPIInference
 from src.self_rag.self_healing_graph import build_self_healing_pipeline
 from src.retrieval.retriever import LegalRetriever
 from src.retrieval.embedding import EmbeddingModel
@@ -65,28 +66,50 @@ class TimeTracker:
         }
 
 def initialize_model():
-    """Initialize the Self-RAG model"""
+    """
+    Initialize the Self-RAG generation engine. The retrieve/critique/retry
+    architecture (src/self_rag/self_healing_graph.py) is the same either way;
+    GENERATION_BACKEND picks which engine answers and self-critiques:
+      - "openai" / "anthropic" (default: openai): hosted LLM API, fast,
+        no multi-GB model to host. Requires OPENAI_API_KEY / ANTHROPIC_API_KEY.
+      - "local_gguf": the local Self-RAG GGUF model. Slower on CPU and needs
+        the model downloaded (scripts/download_model.py) plus llama-cpp-python
+        installed, but has no per-query API cost.
+    """
     global model
 
-    model_path = os.getenv("SELFRAG_MODEL_PATH", "data/models/selfrag-7b-q4_k_m.gguf")
+    backend = os.getenv("GENERATION_BACKEND", "openai").lower()
 
-    if not os.path.exists(model_path):
-        return {
-            "error": "Model not found",
-            "message": f"Please download the Self-RAG model to {model_path}",
-            "download_url": "https://huggingface.co/selfrag/selfrag_llama2_7b"
-        }
+    if backend == "local_gguf":
+        model_path = os.getenv("SELFRAG_MODEL_PATH", "data/models/selfrag_llama2_7b.q4_k_m.gguf")
+        if not os.path.exists(model_path):
+            return {
+                "error": "Model not found",
+                "message": f"Run scripts/download_model.py to download the Self-RAG model to {model_path}",
+            }
+        try:
+            model = SelfRAGGGUFInference(
+                model_path=model_path,
+                n_ctx=4096,
+                n_gpu_layers=0,  # Set to -1 for GPU acceleration
+                verbose=False,
+            )
+            return {"status": "Local Self-RAG GGUF model initialized successfully", "backend": "local_gguf"}
+        except Exception as e:
+            return {"error": f"Failed to initialize local model: {str(e)}"}
 
-    try:
-        model = SelfRAGGGUFInference(
-            model_path=model_path,
-            n_ctx=4096,
-            n_gpu_layers=0,  # Set to -1 for GPU acceleration
-            verbose=False
-        )
-        return {"status": "Model initialized successfully"}
-    except Exception as e:
-        return {"error": f"Failed to initialize model: {str(e)}"}
+    if backend in ("openai", "anthropic"):
+        try:
+            model = LLMAPIInference(provider=backend)
+            return {"status": f"Hosted {backend} model initialized successfully", "backend": backend, "model": model.model}
+        except ValueError as e:
+            return {
+                "error": str(e),
+                "message": f"Set {backend.upper()}_API_KEY as an environment variable, or set "
+                           f"GENERATION_BACKEND=local_gguf to use the local model instead.",
+            }
+
+    return {"error": f"Unknown GENERATION_BACKEND: '{backend}'. Use 'openai', 'anthropic', or 'local_gguf'."}
 
 def initialize_retriever():
     """Initialize the retrieval system"""
@@ -399,6 +422,11 @@ if __name__ == '__main__':
     print(f"Model: {model_result}")
     print(f"Retriever: {retriever_result}")
     print("=" * 50)
-    print("Server starting on http://localhost:5000")
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Railway/Render assign the listen port via $PORT at runtime -- a
+    # hardcoded port here would silently fail to receive traffic on either.
+    port = int(os.getenv("PORT", 5000))
+    debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
+    print(f"Server starting on http://0.0.0.0:{port} (debug={debug})")
+
+    app.run(host='0.0.0.0', port=port, debug=debug)

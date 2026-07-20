@@ -95,7 +95,7 @@ def demo_self_healing(examples, num_examples=5):
     for ex in examples[:num_examples]:
         attempt_state = {"n": 0}
 
-        def generate_fn(question, passage, _ex=ex, _state=attempt_state):
+        def generate_fn(question, passage, temperature=0.0, _ex=ex, _state=attempt_state):
             _state["n"] += 1
             if _state["n"] == 1:
                 return GenerationResult(
