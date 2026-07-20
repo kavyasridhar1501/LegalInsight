@@ -82,6 +82,32 @@ class TestOutputGuardrails:
         assert not result.allowed
         assert "toxic_content_detected" in result.blocked_reasons
 
+    def test_short_terse_factual_answer_is_not_flagged_off_topic(self):
+        # Regression test: found live on the deployed Railway backend.
+        # "What is the governing law?" -> "California law" got blocked as
+        # off_topic because a short, correct, terse answer legitimately
+        # doesn't contain any of the domain-hint keywords. Hosted LLMs
+        # (gpt-4o-mini etc.) give answers like this far more often than the
+        # verbose local 7B model did.
+        for short_answer in ["California law", "12 months", "$25,000 USD", "TechCorp Solutions Inc."]:
+            result = self.guardrails.check_answer(short_answer)
+            assert result.allowed, f"{short_answer!r} should not be flagged off_topic"
+
+    def test_short_toxic_answer_is_still_blocked(self):
+        # The length exemption must only apply to the on-topic check --
+        # toxicity should still be caught regardless of answer length.
+        result = self.guardrails.check_answer("go die")
+        assert not result.allowed
+        assert "toxic_content_detected" in result.blocked_reasons
+
+    def test_short_off_topic_answer_still_slips_the_topic_check_by_design(self):
+        # Documents the tradeoff explicitly: below the word threshold, even
+        # a genuinely off-topic answer is allowed through on-topic-wise,
+        # because blocking short factual answers is the more common and
+        # more costly failure mode in practice for this app.
+        result = self.guardrails.check_answer("I love pizza.")
+        assert result.allowed
+
     def test_valid_extraction_schema_passes(self):
         raw = """
         {
