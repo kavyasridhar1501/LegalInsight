@@ -45,8 +45,9 @@ window.addEventListener('DOMContentLoaded', function () {
 });
 
 function loadSettings() {
-    const provider = localStorage.getItem('api_provider') || 'openai';
-    const apiKey   = localStorage.getItem('api_key') || '';
+    const provider   = localStorage.getItem('api_provider') || 'openai';
+    const apiKey     = localStorage.getItem('api_key') || '';
+    const backendUrl = localStorage.getItem('backend_url') || '';
 
     const providerEl = document.getElementById('api-provider');
     if (providerEl) providerEl.value = provider;
@@ -58,6 +59,9 @@ function loadSettings() {
         if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.className = 'success'; }
     }
 
+    const backendUrlEl = document.getElementById('backend-url');
+    if (backendUrlEl) backendUrlEl.value = backendUrl;
+
     updateApiConfig();
 }
 
@@ -68,8 +72,16 @@ function updateApiConfig() {
     const provider = providerEl.value;
     localStorage.setItem('api_provider', provider);
 
-    const apiKeySection = document.getElementById('api-key-section');
-    const apiLink       = document.getElementById('api-link');
+    const apiKeySection    = document.getElementById('api-key-section');
+    const backendUrlSection = document.getElementById('backend-url-section');
+    const apiLink          = document.getElementById('api-link');
+
+    if (provider === 'reliability-backend') {
+        if (apiKeySection) apiKeySection.style.display = 'none';
+        if (backendUrlSection) backendUrlSection.style.display = 'block';
+        return;
+    }
+    if (backendUrlSection) backendUrlSection.style.display = 'none';
 
     if (provider === 'demo') {
         if (apiKeySection) apiKeySection.style.display = 'none';
@@ -104,6 +116,60 @@ function saveApiKey() {
     localStorage.setItem('api_key', apiKey);
     statusEl.textContent = '✓ API Key Saved';
     statusEl.className = 'success';
+}
+
+function saveBackendUrl() {
+    const urlEl    = document.getElementById('backend-url');
+    const statusEl = document.getElementById('backend-status');
+    if (!urlEl || !statusEl) return;
+
+    const url = urlEl.value.trim().replace(/\/+$/, '');
+    if (!url) {
+        statusEl.textContent = '✗ Please enter a backend URL';
+        statusEl.className = 'error';
+        return;
+    }
+    localStorage.setItem('backend_url', url);
+    statusEl.textContent = '✓ URL Saved — click "Initialize Backend" next';
+    statusEl.className = 'success';
+}
+
+async function initializeBackend() {
+    const statusEl = document.getElementById('backend-status');
+    const backendUrl = localStorage.getItem('backend_url');
+    if (!backendUrl) {
+        alert('Please enter and save a backend URL first');
+        return;
+    }
+
+    disableBtn('init-backend-btn', true);
+    if (statusEl) { statusEl.textContent = 'Initialising model + retriever…'; statusEl.className = ''; }
+
+    try {
+        const res = await fetch(backendUrl + '/initialize', { method: 'POST' });
+        const data = await res.json();
+
+        const modelOk     = data.model && !data.model.error;
+        const retrieverOk = data.retriever && !data.retriever.error;
+
+        if (modelOk && retrieverOk) {
+            if (statusEl) { statusEl.textContent = '✓ Backend ready'; statusEl.className = 'success'; }
+        } else {
+            const problems = [
+                !modelOk     ? (data.model && data.model.message) || (data.model && data.model.error) : null,
+                !retrieverOk ? (data.retriever && data.retriever.error) : null
+            ].filter(Boolean).join(' | ');
+            if (statusEl) { statusEl.textContent = '⚠ ' + (problems || 'Backend not fully initialised'); statusEl.className = 'error'; }
+        }
+    } catch (err) {
+        console.error('Backend init failed:', err);
+        if (statusEl) {
+            statusEl.textContent = '✗ Could not reach backend at ' + backendUrl;
+            statusEl.className = 'error';
+        }
+    } finally {
+        disableBtn('init-backend-btn', false);
+    }
 }
 
 // Drag-and-drop
@@ -200,8 +266,13 @@ async function summarizeContract() {
 
 async function performAnalysis(contractText, query) {
     const provider = getValue('api-provider') || 'demo';
-    const apiKey   = localStorage.getItem('api_key');
 
+    if (provider === 'reliability-backend') {
+        await performBackendAnalysis(contractText, query);
+        return;
+    }
+
+    const apiKey = localStorage.getItem('api_key');
     if (provider !== 'demo' && !apiKey) {
         alert('Please enter your API key first');
         return;
@@ -280,6 +351,123 @@ async function performAnalysis(contractText, query) {
         setLoading(false);
         disableBtn('analyze-btn', false);
     }
+}
+
+// Reliability backend (self-healing RAG + guardrails)
+
+async function performBackendAnalysis(contractText, query) {
+    const backendUrl = localStorage.getItem('backend_url');
+    if (!backendUrl) {
+        alert('Please enter and save a Reliability Backend URL first');
+        return;
+    }
+
+    setLoading(true, 'Running self-healing retrieve → generate → critique loop...');
+    hide('results-section');
+    hide('followup-section');
+    hide('structured-data-section');
+    disableBtn('analyze-btn', true);
+
+    conversationHistory = [];
+    lastContractText    = contractText;
+
+    try {
+        const res = await fetch(backendUrl + '/analyze_contract_self_healing', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contract_text: contractText, query, max_attempts: 2 })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+            const reasons = (data.reasons || []).join(', ');
+            alert(
+                (data.error || 'Backend request failed') +
+                (reasons ? '\n\nReason(s): ' + reasons : '')
+            );
+            return;
+        }
+
+        displayBackendResults(data, contractText);
+        updateAnalytics(contractText.length, data.performance.total_time_seconds);
+
+    } catch (err) {
+        console.error('Backend analysis failed:', err);
+        alert(
+            'Could not reach the reliability backend at ' + backendUrl + '.\n\n' +
+            'Make sure backend/api.py is running and reachable, and that you clicked ' +
+            '"Initialize Backend" first.\n\nDetails: ' + err.message
+        );
+    } finally {
+        setLoading(false);
+        disableBtn('analyze-btn', false);
+    }
+}
+
+function displayBackendResults(data, contractText) {
+    const manualTime = estimateManualTime(contractText.length);
+    const totalTime  = data.performance.total_time_seconds;
+    const timeSaved  = manualTime - totalTime;
+    const efficiency = timeSaved / manualTime * 100;
+    const speedup    = manualTime / totalTime;
+
+    setText('time-saved', (timeSaved / 60).toFixed(1) + ' min');
+    setText('efficiency', efficiency.toFixed(1) + '%');
+    setText('speedup',    speedup.toFixed(0) + 'x');
+
+    const riskLabel = data.used_fallback ? 'Insufficient Info' : 'Grounded';
+    setText('hallucination-risk', riskLabel);
+    const hallCard = document.getElementById('hallucination-card');
+    if (hallCard) {
+        hallCard.className = 'metric-card ' + (data.used_fallback ? 'warning' : 'success');
+    }
+
+    setText('answer-content', data.answer);
+
+    hide('chunk-info');
+    hide('eigenscore-section');
+    hide('alternatives-section');
+    show('reliability-section');
+
+    setText('manual-time',     (manualTime / 60).toFixed(1) + ' minutes');
+    setText('ai-time',         totalTime.toFixed(2) + ' seconds');
+    setText('contract-length', contractText.length.toLocaleString() + ' characters');
+    setText('estimated-pages', Math.round(contractText.length / 3000) + ' pages');
+
+    const guardEl = document.getElementById('guardrails-status');
+    if (guardEl) {
+        if (data.guardrails && data.guardrails.output_blocked) {
+            guardEl.innerHTML =
+                '<span class="error">⚠ Output withheld by guardrails: ' +
+                escapeHtml(data.guardrails.output_blocked_reasons.join(', ')) + '</span>';
+        } else {
+            guardEl.innerHTML = '<span class="success">✓ Passed input and output checks</span>';
+        }
+    }
+
+    const traceEl = document.getElementById('healing-trace-content');
+    if (traceEl) {
+        traceEl.innerHTML = data.trace.map((step, i) => {
+            const label = step.accepted ? '✓ Accepted' : '↻ Rejected, retrying';
+            const reasons = step.reasons && step.reasons.length
+                ? '<br><em>' + escapeHtml(step.reasons.join('; ')) + '</em>' : '';
+            return `<div class="alternative-item">` +
+                `<strong>Attempt ${i + 1} (${label}):</strong> ` +
+                `<span style="opacity:0.7">${escapeHtml(step.retrieval_query)}</span>` +
+                reasons +
+                `</div>`;
+        }).join('');
+    }
+
+    show('results-section');
+    document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
+    hide('followup-section');
+    hide('structured-data-section');
+}
+
+function toggleHealingTrace() {
+    const el = document.getElementById('healing-trace-content');
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 // Follow-up questions
@@ -685,6 +873,10 @@ function calculateConsistencyFallback(responses) {
 // Display logic
 
 function displayResults(data) {
+    hide('reliability-section');
+    show('eigenscore-section');
+    show('alternatives-section');
+
     const manualTime = estimateManualTime(data.contractLength);
     const timeSaved  = manualTime - data.analysisTime;
     const efficiency = timeSaved / manualTime * 100;

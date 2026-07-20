@@ -242,7 +242,20 @@ This replaces the earlier length-variance proxy with a genuine semantic comparis
 
 The optional Flask backend (`backend/api.py`) adds three subsystems on top of
 Self-RAG + EigenScore, aimed specifically at improving the metrics above
-(hallucination rate, faithfulness, and trustworthiness of what gets returned):
+(hallucination rate, faithfulness, and trustworthiness of what gets returned).
+The frontend (`frontend/`, mirrored to `docs/` for the GitHub Pages deploy) has
+a **"Self-RAG Reliability Backend"** option in the provider dropdown that
+routes analysis through this backend instead of calling a provider directly —
+enter the backend's URL, click **Initialize Backend** once, then analyze as
+usual. Running it requires:
+1. `python backend/api.py` (locally, or deployed via the included
+   `render.yaml` / `railway.toml` / `Procfile`), and
+2. A Self-RAG GGUF model downloaded to `data/models/` (see
+   `scripts/download_model.py`) — without it, `/initialize` reports the model
+   as unavailable but the retriever still initializes.
+
+Everything else on this page (LangChain chunking, direct provider calls,
+Jaccard consistency scoring) works exactly as before and needs neither of these.
 
 ### Self-Healing RAG Loop
 

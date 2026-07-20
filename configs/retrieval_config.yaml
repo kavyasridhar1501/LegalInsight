@@ -19,7 +19,9 @@ embedding:
   model_name: "sentence-transformers/all-mpnet-base-v2"  # Options: all-mpnet-base-v2, all-MiniLM-L6-v2
   batch_size: 32
   normalize_embeddings: true
-  device: "mps"  # Options: cpu, cuda, mps (Mac GPU - Apple Silicon)
+  device: "cpu"  # Options: cpu, cuda, mps (Mac GPU - Apple Silicon). "cpu" is the
+                 # portable default: Render/Railway and most deployment targets
+                 # have no MPS support, and "mps" here fails hard on Linux hosts.
 
 # Vector database (FAISS)
 indexing:
