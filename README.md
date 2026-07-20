@@ -108,6 +108,9 @@ LegalInsight includes the **full LegalBench-RAG dataset** with 6,858 legal contr
 - **Vector Store**: FAISS for semantic search
 - **Embeddings**: BGE-M3 (sentence-transformers)
 - **Dataset**: LegalBench-RAG (6,858 queries)
+- **Self-Healing Orchestration**: LangGraph (`src/self_rag/self_healing_graph.py`)
+- **Guardrails**: Custom PII/injection/schema/policy gateway (`src/guardrails/`)
+- **Eval CI/CD**: Golden-dataset regression gate (`src/evaluation/`, `.github/workflows/eval.yml`)
 
 ---
 
@@ -232,6 +235,78 @@ The system uses LangChain to generate and score three responses for consistency:
 4. The average similarity (mapped to 0–100%) is displayed as the consistency score
 
 This replaces the earlier length-variance proxy with a genuine semantic comparison.
+
+---
+
+## Backend Reliability Pipeline (Self-RAG server)
+
+The optional Flask backend (`backend/api.py`) adds three subsystems on top of
+Self-RAG + EigenScore, aimed specifically at improving the metrics above
+(hallucination rate, faithfulness, and trustworthiness of what gets returned):
+
+### Self-Healing RAG Loop
+
+`src/self_rag/self_healing_graph.py` models retrieval as a stateful,
+cyclical **LangGraph** workflow instead of a single retrieve-and-generate
+pass:
+
+```
+retrieve → generate → critique ──accept──▶ return answer
+                          │
+                       reject
+                          ▼
+                    reformulate query → retrieve (retry)
+                          │
+                (still rejected after max_attempts)
+                          ▼
+              "I don't have enough information" (graceful fallback)
+```
+
+The critic rejects an answer when the Self-RAG reflection tokens indicate the
+retrieved passage is irrelevant (`ISREL`) or the answer isn't supported by it
+(`ISSUP`), or when EigenScore flags high semantic divergence across
+resamples. On rejection, the query is reformulated (via the model itself, or
+a rule-based fallback) and retrieval runs again, up to `max_attempts`.
+Exposed via `POST /analyze_contract_self_healing`.
+
+### Guardrails Gateway
+
+`src/guardrails/` sits between the user and the LLM:
+- **Input guardrails** (`input_guardrails.py`): detects and blocks prompt
+  injection / jailbreak phrasing, and detects + redacts PII (credit cards
+  via Luhn check, SSNs, emails, phone numbers) typed into a query.
+- **Output guardrails** (`output_guardrails.py`): validates the structured
+  key-term extraction JSON against a schema, and blocks toxic or off-topic
+  responses.
+- **Policy engine** (`policy.py`): a YAML rules file
+  (`configs/guardrails_policy.yaml`) so non-engineers can add rules like
+  "never discuss competitors" or "block medical advice" without touching
+  code.
+
+Both `/analyze_contract` and `/analyze_contract_self_healing` run input
+checks before generation and output checks before returning a response; a
+blocked response is replaced with an explanation of which rule fired instead
+of being silently returned.
+
+### LLM Eval CI/CD Pipeline
+
+`src/evaluation/` turns the LegalBench-RAG dataset already bundled in this
+repo (`data/full_legalbench_qa.json`, 6,858 labeled Q&A pairs) into a golden
+regression set:
+- **Metrics** (`metrics.py`): retrieval precision@k / recall@k / MRR,
+  hallucination rate (EigenScore + ISSUP), faithfulness, fallback rate, and
+  p50/p95 latency.
+- **Runner** (`run_eval.py`): `python -m src.evaluation.run_eval
+  --sample-size 100` samples the golden set, runs it through the pipeline,
+  writes a JSON report, and exits non-zero if hallucination rate or latency
+  breach a configurable threshold.
+- **CI gate** (`.github/workflows/eval.yml`): runs on every push/PR —
+  guardrail and self-healing unit tests always run; a retrieval-only
+  precision/recall/MRR/latency gate runs using a lightweight embedding model
+  (no GGUF download required). The full generation eval (hallucination rate,
+  faithfulness against the Self-RAG model) is a manual/scheduled job, since
+  it needs the multi-GB Self-RAG GGUF weights cached rather than downloaded
+  on every push.
 
 ---
 
