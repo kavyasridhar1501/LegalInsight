@@ -242,6 +242,9 @@ def main():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-tokens", type=int, default=150)
     parser.add_argument("--max-attempts", type=int, default=2)
+    parser.add_argument("--n-gpu-layers", type=int, default=0,
+                         help="Layers to offload to GPU (0 = CPU-only, -1 = all layers on GPU). "
+                              "Set to -1 if you have CUDA/Metal support for a large speedup.")
     args = parser.parse_args()
 
     report = {"generated_at": datetime.now(timezone.utc).isoformat()}
@@ -257,7 +260,9 @@ def main():
         from src.self_rag.gguf_inference import SelfRAGGGUFInference
 
         print(f"Loading Self-RAG model from {model_path}...", file=sys.stderr)
-        model = SelfRAGGGUFInference(model_path=model_path, n_ctx=2048, n_gpu_layers=0, verbose=False)
+        model = SelfRAGGGUFInference(
+            model_path=model_path, n_ctx=2048, n_gpu_layers=args.n_gpu_layers, verbose=False
+        )
 
         examples = load_golden_dataset(sample_size=args.sample_size, seed=args.seed)
         all_examples = load_golden_dataset()
