@@ -50,18 +50,30 @@ _LEGAL_DOMAIN_HINTS = [
 class OutputGuardrails:
     """Validates LLM responses for schema conformance, toxicity, and topicality."""
 
-    def __init__(self, enforce_on_topic: bool = True):
+    def __init__(self, enforce_on_topic: bool = True, min_words_for_topic_check: int = 6):
         self.enforce_on_topic = enforce_on_topic
+        # Short, terse answers ("California law", "12 months", "$25,000 USD")
+        # are common with concise hosted-LLM engines and legitimately won't
+        # contain any legal-domain keyword -- found by hitting the real
+        # deployed backend, where "California law" answering "What is the
+        # governing law?" got flagged off_topic. Off-topic derailment (the
+        # actual threat this guardrail targets) tends to be longer prose,
+        # not a 2-3 word factual extract, so short answers skip this check.
+        self.min_words_for_topic_check = min_words_for_topic_check
 
     def check_toxicity(self, text: str) -> List[str]:
         lowered = text.lower()
         return [term for term in _TOXIC_TERMS if term in lowered]
 
     def check_on_topic(self, text: str) -> bool:
-        """Heuristic: response should reference at least one legal/contract term."""
-        if not text.strip():
+        """Heuristic: response should reference at least one legal/contract term,
+        unless it's short enough to plausibly be a terse factual answer."""
+        stripped = text.strip()
+        if not stripped:
             return False
-        lowered = text.lower()
+        if len(stripped.split()) < self.min_words_for_topic_check:
+            return True
+        lowered = stripped.lower()
         return any(hint in lowered for hint in _LEGAL_DOMAIN_HINTS)
 
     def check_answer(self, text: str) -> OutputCheckResult:
