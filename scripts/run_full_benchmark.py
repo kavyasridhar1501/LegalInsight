@@ -177,6 +177,12 @@ def run_self_healing_eval(examples: list, model, all_passages: list, max_attempt
     }
 
 
+def _k(d: dict, key: int):
+    """Look up a precision_at_k/recall_at_k entry regardless of whether the
+    dict has int keys (freshly computed) or str keys (round-tripped through JSON)."""
+    return d[key] if key in d else d[str(key)]
+
+
 def to_markdown(report: dict) -> str:
     lines = [
         f"# LegalInsight Benchmark Results",
@@ -187,8 +193,8 @@ def to_markdown(report: dict) -> str:
         f"",
         f"| Metric | Value |",
         f"|---|---|",
-        f"| Precision@1 | {report['retrieval']['precision_at_k']['1']:.1%} |",
-        f"| Recall@5 | {report['retrieval']['recall_at_k']['5']:.1%} |",
+        f"| Precision@1 | {_k(report['retrieval']['precision_at_k'], 1):.1%} |",
+        f"| Recall@5 | {_k(report['retrieval']['recall_at_k'], 5):.1%} |",
         f"| MRR | {report['retrieval']['mrr']:.3f} |",
         f"| Latency p50 / p95 | {report['retrieval']['latency']['p50'] * 1000:.1f}ms / {report['retrieval']['latency']['p95'] * 1000:.1f}ms |",
         f"| Unique passages in sample | {report['retrieval']['unique_passages_in_sample']} |",
