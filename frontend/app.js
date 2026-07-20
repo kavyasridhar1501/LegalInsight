@@ -22,7 +22,7 @@ let analytics = { totalAnalyses: 0, totalTimeSaved: 0, totalEfficiency: 0 };
 // Fill in once the backend is deployed (e.g. to Railway) so visitors get a
 // working Self-RAG backend out of the box, with no setup of their own.
 // Leave empty to require everyone to enter their own backend URL.
-const DEFAULT_BACKEND_URL = '';
+const DEFAULT_BACKEND_URL = 'https://legalinsight-production.up.railway.app';
 
 // LangChain engine accessor
 
