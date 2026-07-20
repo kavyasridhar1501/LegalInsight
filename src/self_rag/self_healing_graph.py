@@ -2,11 +2,23 @@
 Self-Healing RAG Pipeline
 
 Models retrieve -> generate -> critique as a stateful, cyclical LangGraph
-workflow instead of a linear chain. When the critic rejects an answer (not
-grounded in the retrieved passage, or high semantic divergence across
-resamples), the query is reformulated and retrieval runs again. If the
-answer is still rejected after `max_attempts`, the pipeline returns a
-graceful "insufficient information" response instead of a fabricated one.
+workflow instead of a linear chain. The critic can reject an answer for two
+structurally different reasons, and the graph heals differently for each:
+
+- ISREL says the retrieved passage is irrelevant -> the retrieval step
+  itself failed, so the query is reformulated and retrieval runs again.
+- ISREL says the passage IS relevant but ISSUP says the answer isn't
+  supported -> retrieval and generation both already succeeded; what's
+  unreliable is the model's own single-sample ISSUP judgment (confirmed
+  against the real Self-RAG GGUF model: at temperature=0 this token can be
+  a deterministic false negative on a correct, fully-supported answer, and
+  reformulating the query does nothing because the passage was never the
+  problem). So instead of re-retrieving, the graph resamples generation on
+  the SAME passage at a higher temperature, which is the axis that's
+  actually unreliable here.
+
+If the answer is still rejected after `max_attempts`, the pipeline returns
+a graceful "insufficient information" response instead of a fabricated one.
 
 The graph is built against small callables (`GenerateFn`, `RetrieveFn`,
 `ReformulateFn`) rather than concrete model classes, so it can be unit
@@ -36,7 +48,7 @@ class GenerationResult:
     eigenscore: Optional[float] = None
 
 
-GenerateFn = Callable[[str, Optional[str]], GenerationResult]
+GenerateFn = Callable[[str, Optional[str], float], GenerationResult]
 RetrieveFn = Callable[[str, int], List[Dict[str, Any]]]
 ReformulateFn = Callable[[str, GenerationResult], str]
 
@@ -91,6 +103,17 @@ def _default_critique(result: GenerationResult, eigenscore_threshold: float) -> 
     return len(reasons) == 0, reasons
 
 
+def _is_unsupported_but_relevant(result: GenerationResult) -> bool:
+    """True when ISREL says the passage is relevant but ISSUP says the
+    answer isn't supported -- the case where resampling the same passage
+    at a different temperature helps, rather than re-retrieving."""
+    passage_relevant = result.isrel is not None and "Relevant" in result.isrel and "Irrelevant" not in result.isrel
+    issup_unsupported = result.issup is not None and (
+        "No support" in result.issup or "Contradictory" in result.issup
+    )
+    return passage_relevant and issup_unsupported
+
+
 class SelfHealingRAG:
     """Compiles and runs the retrieve -> generate -> critique -> heal LangGraph workflow."""
 
@@ -102,12 +125,16 @@ class SelfHealingRAG:
         max_attempts: int = 2,
         top_k: int = 3,
         eigenscore_threshold: float = -2.0,
+        resample_temperature: float = 0.7,
     ):
         """
         Args:
             max_attempts: Maximum number of retrieve+generate attempts before
                 falling back to "insufficient information", including the
                 first attempt (e.g. max_attempts=2 allows one retry).
+            resample_temperature: Temperature used when retrying generation
+                on the same passage (ISREL relevant, ISSUP unsupported)
+                instead of re-retrieving.
         """
         self.generate_fn = generate_fn
         self.retrieve_fn = retrieve_fn
@@ -115,6 +142,7 @@ class SelfHealingRAG:
         self.max_attempts = max_attempts
         self.top_k = top_k
         self.eigenscore_threshold = eigenscore_threshold
+        self.resample_temperature = resample_temperature
         self._graph = self._build_graph()
 
     def _build_graph(self):
@@ -123,6 +151,7 @@ class SelfHealingRAG:
         graph.add_node("generate", self._generate_node)
         graph.add_node("critique", self._critique_node)
         graph.add_node("reformulate", self._reformulate_node)
+        graph.add_node("resample", self._resample_node)
         graph.add_node("fallback", self._fallback_node)
 
         graph.set_entry_point("retrieve")
@@ -131,9 +160,10 @@ class SelfHealingRAG:
         graph.add_conditional_edges(
             "critique",
             self._route_after_critique,
-            {"accept": END, "retry": "reformulate", "fallback": "fallback"},
+            {"accept": END, "retry": "reformulate", "resample": "resample", "fallback": "fallback"},
         )
         graph.add_edge("reformulate", "retrieve")
+        graph.add_edge("resample", "critique")
         graph.add_edge("fallback", END)
 
         return graph.compile()
@@ -146,8 +176,16 @@ class SelfHealingRAG:
         return {"passage": passage, "passage_score": passage_score}
 
     def _generate_node(self, state: HealingState) -> HealingState:
-        result = self.generate_fn(state["question"], state.get("passage"))
+        result = self.generate_fn(state["question"], state.get("passage"), 0.0)
         return {"result": result}
+
+    def _resample_node(self, state: HealingState) -> HealingState:
+        """Regenerate on the SAME passage at a higher temperature instead of
+        re-retrieving -- used when the passage was judged relevant but the
+        answer was judged unsupported, since re-retrieval can't fix a
+        critique-token miscalibration."""
+        result = self.generate_fn(state["question"], state.get("passage"), self.resample_temperature)
+        return {"result": result, "attempt": state.get("attempt", 0) + 1}
 
     def _critique_node(self, state: HealingState) -> HealingState:
         accepted, reasons = _default_critique(state["result"], self.eigenscore_threshold)
@@ -178,6 +216,8 @@ class SelfHealingRAG:
         attempts_done = state.get("attempt", 0) + 1
         if attempts_done >= self.max_attempts:
             return "fallback"
+        if state.get("passage") and _is_unsupported_but_relevant(state["result"]):
+            return "resample"
         return "retry"
 
     def run(self, question: str) -> HealingState:
@@ -198,14 +238,15 @@ def build_self_healing_pipeline(
     max_attempts: int = 2,
     top_k: int = 3,
     eigenscore_threshold: float = -2.0,
+    resample_temperature: float = 0.7,
 ) -> SelfHealingRAG:
     """
     Wire a real SelfRAGGGUFInference model and LegalRetriever into the
     self-healing graph.
     """
 
-    def generate_fn(question: str, passage: Optional[str]) -> GenerationResult:
-        output = inference_model.generate(question, passage=passage)
+    def generate_fn(question: str, passage: Optional[str], temperature: float = 0.0) -> GenerationResult:
+        output = inference_model.generate(question, passage=passage, temperature=temperature)
         return GenerationResult(
             answer=output.answer,
             isrel=output.isrel,
@@ -238,4 +279,5 @@ def build_self_healing_pipeline(
         max_attempts=max_attempts,
         top_k=top_k,
         eigenscore_threshold=eigenscore_threshold,
+        resample_temperature=resample_temperature,
     )

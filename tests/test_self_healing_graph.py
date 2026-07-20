@@ -17,7 +17,7 @@ class TestSelfHealingRAG:
     def test_accepts_a_good_first_answer_without_retrying(self):
         calls = {"n": 0}
 
-        def generate_fn(question, passage):
+        def generate_fn(question, passage, temperature=0.0):
             calls["n"] += 1
             return GenerationResult(answer="Good answer.", isrel="[Relevant]", issup="[Fully supported]")
 
@@ -32,7 +32,7 @@ class TestSelfHealingRAG:
     def test_retries_after_rejection_then_accepts(self):
         calls = {"n": 0}
 
-        def generate_fn(question, passage):
+        def generate_fn(question, passage, temperature=0.0):
             calls["n"] += 1
             if calls["n"] == 1:
                 return GenerationResult(answer="bad", isrel="[Irrelevant]", issup="[No support / Contradictory]")
@@ -49,7 +49,7 @@ class TestSelfHealingRAG:
         assert state["trace"][1]["accepted"] is True
 
     def test_falls_back_gracefully_after_exhausting_attempts(self):
-        def generate_fn(question, passage):
+        def generate_fn(question, passage, temperature=0.0):
             return GenerationResult(answer="always wrong", isrel="[Irrelevant]", issup="[No support / Contradictory]")
 
         pipeline = make_pipeline(generate_fn, max_attempts=2)
@@ -62,7 +62,7 @@ class TestSelfHealingRAG:
         assert all(not t["accepted"] for t in state["trace"])
 
     def test_high_eigenscore_triggers_rejection(self):
-        def generate_fn(question, passage):
+        def generate_fn(question, passage, temperature=0.0):
             return GenerationResult(answer="inconsistent answer", isrel="[Relevant]",
                                      issup="[Fully supported]", eigenscore=2.0)
 
@@ -79,7 +79,7 @@ class TestSelfHealingRAG:
             queries_seen.append(query)
             return [{"text": "irrelevant", "score": 0.1}]
 
-        def generate_fn(question, passage):
+        def generate_fn(question, passage, temperature=0.0):
             return GenerationResult(answer="bad", isrel="[Irrelevant]")
 
         pipeline = make_pipeline(generate_fn, retrieve_fn=retrieve_fn, max_attempts=2)
@@ -98,7 +98,7 @@ class TestSelfHealingRAG:
             queries_seen.append(query)
             return [{"text": "irrelevant", "score": 0.1}]
 
-        def generate_fn(question, passage):
+        def generate_fn(question, passage, temperature=0.0):
             return GenerationResult(answer="bad", isrel="[Irrelevant]")
 
         pipeline = SelfHealingRAG(
@@ -108,6 +108,53 @@ class TestSelfHealingRAG:
         pipeline.run("What is the governing law?")
 
         assert queries_seen[1].startswith("CUSTOM: ")
+
+    def test_resample_recovers_from_unsupported_but_relevant_answer(self):
+        # Regression test for the real bug found running the actual Self-RAG
+        # GGUF model: given the correct passage, it answered correctly and
+        # judged the passage [Relevant], but its own ISSUP token said
+        # "No support" anyway (a deterministic false negative at
+        # temperature=0). Reformulating the query can't fix this since
+        # retrieval was never the problem -- resampling the SAME passage at
+        # a different temperature can.
+        retrieve_calls = {"n": 0}
+        temperatures_seen = []
+
+        def retrieve_fn(query, top_k):
+            retrieve_calls["n"] += 1
+            return [{"text": "TERM: twelve (12) months.", "score": 0.9}]
+
+        def generate_fn(question, passage, temperature=0.0):
+            temperatures_seen.append(temperature)
+            if temperature == 0.0:
+                return GenerationResult(answer="12 months", isrel="[Relevant]",
+                                         issup="[No support / Contradictory]")
+            return GenerationResult(answer="12 months", isrel="[Relevant]", issup="[Fully supported]")
+
+        pipeline = SelfHealingRAG(generate_fn=generate_fn, retrieve_fn=retrieve_fn, max_attempts=2)
+        state = pipeline.run("What is the contract duration?")
+
+        assert state["accepted"] is True
+        assert state["used_fallback"] is False
+        assert retrieve_calls["n"] == 1  # no re-retrieval -- same passage reused
+        assert temperatures_seen == [0.0, 0.7]  # resampled at higher temperature, not 0.0 again
+
+    def test_falls_back_when_resample_also_unsupported(self):
+        retrieve_calls = {"n": 0}
+
+        def retrieve_fn(query, top_k):
+            retrieve_calls["n"] += 1
+            return [{"text": "some passage", "score": 0.9}]
+
+        def generate_fn(question, passage, temperature=0.0):
+            return GenerationResult(answer="an answer", isrel="[Relevant]", issup="[No support / Contradictory]")
+
+        pipeline = SelfHealingRAG(generate_fn=generate_fn, retrieve_fn=retrieve_fn, max_attempts=2)
+        state = pipeline.run("What is the contract duration?")
+
+        assert state["used_fallback"] is True
+        assert retrieve_calls["n"] == 1  # still never re-retrieved -- both attempts resampled the same passage
+        assert len(state["trace"]) == 2
 
     def test_default_reformulate_strips_question_lead_words(self):
         result = GenerationResult(answer="bad")
