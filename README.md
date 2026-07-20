@@ -246,26 +246,52 @@ This replaces the earlier length-variance proxy with a genuine semantic comparis
 
 ## Backend Reliability Pipeline (Self-RAG server)
 
-The optional Flask backend (`backend/api.py`) adds three subsystems on top of
-Self-RAG + EigenScore, aimed specifically at improving the metrics above
-(hallucination rate, faithfulness, and trustworthiness of what gets returned).
-The frontend (`frontend/`, mirrored to `docs/` for the GitHub Pages deploy) has
-a **"Self-RAG Reliability Backend"** option in the provider dropdown that
-routes analysis through this backend instead of calling a provider directly —
-enter the backend's URL, click **Initialize Backend** once, then analyze as
-usual. Running it requires:
-1. `python backend/api.py` (locally, or deployed via the included
-   `render.yaml` / `railway.toml` / `Procfile`), and
-2. A Self-RAG GGUF model downloaded to `data/models/` via
-   `python scripts/download_model.py` (~4.1GB) — without it, `/initialize`
-   reports the model as unavailable but the retriever still initializes.
+The Flask backend (`backend/api.py`) is what makes this a real RAG system
+instead of a static page calling a provider blind: real document retrieval,
+a self-healing retrieve → generate → critique → retry loop, and PII/
+injection/policy guardrails on input and output. The frontend's provider
+dropdown defaults to **"⭐ Self-RAG (Recommended)"**, which routes through
+this backend — everything else in the dropdown ("Advanced: ... directly")
+bypasses retrieval and guardrails entirely and talks to a provider straight
+from the browser, unchanged from the original app.
 
-**If `llama-cpp-python` crashes with an illegal-instruction / SIGILL error
-partway through generation** (not at import or model-load time, but during
-actual inference), it's almost certainly this: some virtualized/cloud CPUs
-advertise AVX-512 support in `/proc/cpuinfo` that the hypervisor doesn't
-reliably execute. The prebuilt wheel auto-detects and uses it, then traps.
-Rebuild with AVX-512 disabled:
+### Generation engine: hosted API by default, local model optional
+
+`GENERATION_BACKEND` picks what answers and self-critiques the retrieved
+passage:
+- **`openai` (default) / `anthropic`** — `src/self_rag/llm_api_inference.py`
+  calls a hosted API with a structured critique prompt (the model returns
+  `{"answer", "isrel", "issup"}` as JSON). Fast (2-5s), no model to host,
+  requires `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
+- **`local_gguf`** — the original local Self-RAG 7B model
+  (`src/self_rag/gguf_inference.py`), using its native reflection tokens.
+  No per-query API cost, but slow on CPU (15-20s/query) and needs
+  `pip install llama-cpp-python` plus the model downloaded via
+  `python scripts/download_model.py` (~4.1GB, set `SELFRAG_MODEL_PATH`).
+
+Either way, the retrieve → critique → retry graph
+(`src/self_rag/self_healing_graph.py`) is identical — it only depends on a
+`.generate(question, passage, temperature)` method, not on which engine
+implements it.
+
+### Deploying to Railway
+
+1. Push this repo to GitHub (already done if you're reading this on a branch/PR).
+2. On [railway.app](https://railway.app), **New Project → Deploy from GitHub repo**, pick this repo. `railway.toml` is already configured (`python backend/api.py`, health check on `/health`).
+3. In the Railway dashboard's **Variables** tab, set:
+   - `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY` + `GENERATION_BACKEND=anthropic`)
+   - Railway sets `PORT` automatically — `backend/api.py` already reads it.
+4. Deploy. Once live, copy the Railway-assigned URL (e.g. `https://your-app.up.railway.app`).
+5. Open `frontend/app.js` **and** `docs/app.js`, set `DEFAULT_BACKEND_URL` (near the top, in the State section) to that URL, commit, and push. Every visitor to the deployed frontend now gets a working, connected RAG system with zero setup of their own — no API key, no manual backend URL entry. (Two copies because `docs/` is what GitHub Pages actually serves; `frontend/` is kept in sync with it.)
+
+Render works the same way via `render.yaml` (also already configured) if you prefer it over Railway.
+
+**If running `local_gguf` and `llama-cpp-python` crashes with an
+illegal-instruction / SIGILL error partway through generation** (not at
+import or model-load time, but during actual inference): some virtualized/
+cloud CPUs advertise AVX-512 support in `/proc/cpuinfo` that the hypervisor
+doesn't reliably execute. The prebuilt wheel auto-detects and uses it, then
+traps. Rebuild with AVX-512 disabled:
 ```bash
 pip uninstall -y llama-cpp-python
 CMAKE_ARGS="-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON \
@@ -275,9 +301,6 @@ CMAKE_ARGS="-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON \
 ```
 `GGML_NATIVE=OFF` is the important one — without it, `-march=native` at
 compile time re-enables AVX-512 regardless of the individual flags above.
-
-Everything else on this page (LangChain chunking, direct provider calls,
-Jaccard consistency scoring) works exactly as before and needs neither of these.
 
 ### Self-Healing RAG Loop
 

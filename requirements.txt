@@ -1,20 +1,26 @@
 # LegalInsight - Self-RAG + EigenScore Dependencies
 
-# Core ML & NLP
+# Core ML & NLP (needed for retrieval/embeddings regardless of generation engine)
 torch>=2.0.0
 transformers>=4.30.0
 sentence-transformers>=2.2.0
 datasets>=2.14.0
 
-# Self-RAG Model Support
-llama-cpp-python>=0.2.0
-ctransformers>=0.2.27
+# Self-RAG Model Support -- ONLY needed if GENERATION_BACKEND=local_gguf.
+# Not installed by default: llama-cpp-python needs compilation and a multi-GB
+# model download, which is unnecessary weight for the default hosted-API
+# deployment path. Install manually if you want the local model:
+#   pip install llama-cpp-python
+# llama-cpp-python>=0.2.0
 
 # Retrieval & Embeddings
 faiss-cpu>=1.7.4
 langchain>=0.1.0
 langchain-community>=0.0.10
 langgraph>=0.2.0
+
+# Hosted LLM API calls (GENERATION_BACKEND=openai|anthropic, the default)
+requests>=2.28.0
 
 # Web API
 flask>=2.3.0

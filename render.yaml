@@ -6,7 +6,14 @@ services:
     startCommand: "python backend/api.py"
     healthCheckPath: /health
     envVars:
-      - key: SELFRAG_MODEL_PATH
-        value: /opt/render/project/data/models/selfrag-7b-q4_k_m.gguf
+      # Default engine: hosted LLM API (fast, no multi-GB model to host).
+      # Set to "local_gguf" instead if you want the local Self-RAG model --
+      # you'll also need SELFRAG_MODEL_PATH and a plan with enough RAM/disk.
+      - key: GENERATION_BACKEND
+        value: openai
+      # Set via the Render dashboard (Environment tab), not committed here.
+      - key: OPENAI_API_KEY
+        sync: false
+      # Render injects PORT automatically; kept here for clarity only.
       - key: PORT
         value: 5000
