@@ -37,10 +37,13 @@ _TOXIC_TERMS = [
 ]
 
 _LEGAL_DOMAIN_HINTS = [
+    # Stemmed where plural/verb forms don't share the singular-noun's substring
+    # (e.g. "warranty" is not a substring of "warranties") -- caught by
+    # benchmarking against real contract clauses in scripts/benchmark_features.py.
     "contract", "agreement", "clause", "party", "parties", "term", "terms",
-    "liability", "obligation", "termination", "indemnif", "warranty",
+    "liabilit", "obligation", "terminat", "indemnif", "warrant",
     "confidential", "governing law", "dispute", "payment", "breach",
-    "damages", "provision", "section", "article", "insufficient information",
+    "damag", "provision", "section", "article", "insufficient information",
 ]
 
 

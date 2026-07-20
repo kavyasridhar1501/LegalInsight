@@ -66,6 +66,17 @@ class TestOutputGuardrails:
         assert not result.allowed
         assert "off_topic" in result.blocked_reasons
 
+    def test_plural_warranty_clause_is_not_flagged_off_topic(self):
+        # Regression test: "warranty" is not a substring of "warranties", which
+        # caused a 9.4% false-positive rate when benchmarked against real
+        # contract clauses (see scripts/benchmark_features.py).
+        result = self.guardrails.check_answer(
+            "WARRANTIES: The Provider warrants that services will be performed in a "
+            "professional and workmanlike manner. THE SERVICES ARE PROVIDED 'AS IS' "
+            "WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED."
+        )
+        assert result.allowed
+
     def test_toxic_content_is_blocked(self):
         result = self.guardrails.check_answer("You are worthless, go die.")
         assert not result.allowed
