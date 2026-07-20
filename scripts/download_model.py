@@ -10,17 +10,14 @@ from pathlib import Path
 from tqdm import tqdm
 
 MODELS = {
+    # The official selfrag/selfrag_llama2_7b HuggingFace repo only ships the
+    # PyTorch weights, not GGUF -- this community quantization is the one
+    # that actually resolves. Verified working as of this writing.
     "selfrag-7b-q4": {
-        "url": "https://huggingface.co/selfrag/selfrag_llama2_7b/resolve/main/selfrag_llama2_7b-q4_k_m.gguf",
-        "filename": "selfrag-7b-q4_k_m.gguf",
+        "url": "https://huggingface.co/m4r1/selfrag_llama2_7b-GGUF/resolve/main/selfrag_llama2_7b.q4_k_m.gguf",
+        "filename": "selfrag_llama2_7b.q4_k_m.gguf",
         "size": "4.1GB"
     },
-    # Alternative smaller model for testing
-    "selfrag-7b-q2": {
-        "url": "https://huggingface.co/selfrag/selfrag_llama2_7b/resolve/main/selfrag_llama2_7b-q2_k.gguf",
-        "filename": "selfrag-7b-q2_k.gguf",
-        "size": "2.8GB"
-    }
 }
 
 class DownloadProgressBar(tqdm):
