@@ -13,12 +13,14 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import yaml
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from self_rag.gguf_inference import SelfRAGGGUFInference, compute_eigenscore
-from retrieval.retriever import LegalRetriever
-from retrieval.embedding import EmbeddingModel
-from retrieval.chunking import DocumentChunker
+from src.self_rag.gguf_inference import SelfRAGGGUFInference, compute_eigenscore
+from src.self_rag.self_healing_graph import build_self_healing_pipeline
+from src.retrieval.retriever import LegalRetriever
+from src.retrieval.embedding import EmbeddingModel
+from src.retrieval.chunking import DocumentChunker
+from src.guardrails import InputGuardrails, OutputGuardrails, PolicyEngine
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for GitHub Pages frontend
@@ -26,6 +28,12 @@ CORS(app)  # Enable CORS for GitHub Pages frontend
 model = None
 retriever = None
 analytics_data = []
+
+input_guardrails = InputGuardrails()
+output_guardrails = OutputGuardrails()
+policy_engine = PolicyEngine.from_yaml(
+    str(Path(__file__).parent.parent / "configs" / "guardrails_policy.yaml")
+)
 
 class TimeTracker:
     """Track time metrics for contract analysis"""
@@ -149,6 +157,14 @@ def analyze_contract():
         if model is None:
             return jsonify({"error": "Model not initialized. Call /initialize first"}), 503
 
+        input_check = input_guardrails.check_query(query)
+        input_policy = policy_engine.check(query, applies_to="input")
+        if not input_check.allowed or not input_policy.allowed:
+            return jsonify({
+                "error": "Query blocked by guardrails",
+                "reasons": input_check.blocked_reasons + [v.reason for v in input_policy.violations],
+            }), 400
+
         retrieval_context = None
         if use_retrieval and retriever is not None:
             retrieval_start = time.time()
@@ -164,26 +180,33 @@ def analyze_contract():
         generation_start = time.time()
 
         responses = []
+        issup_tokens = []
         for i in range(num_generations):
-            if use_retrieval and retrieval_context:
-                output = model.generate_with_retrieval(
-                    query=query,
-                    retrieved_docs=retrieval_context,
-                    max_new_tokens=512,
-                    temperature=0.7 if i > 0 else 0.1  # First one more deterministic
-                )
-            else:
-                output = model.generate_without_retrieval(
-                    query=query,
-                    max_new_tokens=512,
-                    temperature=0.7 if i > 0 else 0.1
-                )
+            passage = retrieval_context if (use_retrieval and retrieval_context) else None
+            output = model.generate(
+                question=query,
+                passage=passage,
+                max_tokens=512,
+                temperature=0.7 if i > 0 else 0.1,  # First one more deterministic
+            )
             responses.append(output.answer)
+            issup_tokens.append(output.issup)
 
-        eigenscore = compute_eigenscore(responses, model.model)
+        eigenscore = None
+        if retriever is not None and retriever.embedding_model is not None:
+            eigenscore = compute_eigenscore(responses, retriever.embedding_model)[0]
 
         generation_time = time.time() - generation_start
         total_time = time.time() - start_time
+
+        output_check = output_guardrails.check_answer(responses[0])
+        output_policy = policy_engine.check(responses[0], applies_to="output")
+        guardrail_blocked = not output_check.allowed or not output_policy.allowed
+        if guardrail_blocked:
+            responses[0] = (
+                "This response was withheld by output guardrails "
+                f"({', '.join(output_check.blocked_reasons + [v.reason for v in output_policy.violations])})."
+            )
 
         time_metrics = TimeTracker.calculate_time_saved(total_time, len(contract_text))
 
@@ -199,11 +222,29 @@ def analyze_contract():
         }
         analytics_data.append(analytics_entry)
 
+        if eigenscore is None:
+            hallucination_risk = "Unknown"
+        elif eigenscore < -2.0:
+            hallucination_risk = "Low"
+        elif eigenscore < 0:
+            hallucination_risk = "Medium"
+        else:
+            hallucination_risk = "High"
+
         response = {
             "answer": responses[0],  # Primary response
             "alternative_responses": responses[1:],
             "eigenscore": eigenscore,
-            "hallucination_risk": "Low" if eigenscore < -2.0 else "Medium" if eigenscore < 0 else "High",
+            "hallucination_risk": hallucination_risk,
+            "issup_tokens": issup_tokens,
+            "guardrails": {
+                "input_redacted_query": input_check.redacted_text if input_check.pii_findings else None,
+                "output_blocked": guardrail_blocked,
+                "output_blocked_reasons": (
+                    output_check.blocked_reasons + [v.reason for v in output_policy.violations]
+                    if guardrail_blocked else []
+                ),
+            },
             "time_metrics": time_metrics,
             "performance": {
                 "total_time_seconds": round(total_time, 2),
@@ -217,6 +258,70 @@ def analyze_contract():
         }
 
         return jsonify(response)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/analyze_contract_self_healing', methods=['POST'])
+def analyze_contract_self_healing():
+    """
+    Analyze a contract using the self-healing RAG loop: retrieve -> generate
+    -> critique -> (on rejection) reformulate query and re-retrieve, up to
+    max_attempts, before falling back to an "insufficient information"
+    response instead of a fabricated answer.
+    """
+    try:
+        data = request.json
+        contract_text = data.get('contract_text', '')
+        query = data.get('query', 'Summarize this contract and identify key terms, obligations, and risks.')
+        max_attempts = data.get('max_attempts', 2)
+
+        if not contract_text:
+            return jsonify({"error": "No contract text provided"}), 400
+        if model is None or retriever is None:
+            return jsonify({"error": "Model/retriever not initialized. Call /initialize first"}), 503
+
+        input_check = input_guardrails.check_query(query)
+        input_policy = policy_engine.check(query, applies_to="input")
+        if not input_check.allowed or not input_policy.allowed:
+            return jsonify({
+                "error": "Query blocked by guardrails",
+                "reasons": input_check.blocked_reasons + [v.reason for v in input_policy.violations],
+            }), 400
+
+        start_time = time.time()
+        retriever.index_documents(
+            [{"text": contract_text, "metadata": {"source": "user_contract"}}]
+        )
+
+        pipeline = build_self_healing_pipeline(model, retriever, max_attempts=max_attempts)
+        state = pipeline.run(query)
+        total_time = time.time() - start_time
+
+        answer = state["result"].answer
+        output_check = output_guardrails.check_answer(answer)
+        output_policy = policy_engine.check(answer, applies_to="output")
+        guardrail_blocked = not output_check.allowed or not output_policy.allowed
+        if guardrail_blocked:
+            answer = (
+                "This response was withheld by output guardrails "
+                f"({', '.join(output_check.blocked_reasons + [v.reason for v in output_policy.violations])})."
+            )
+
+        return jsonify({
+            "answer": answer,
+            "used_fallback": state["used_fallback"],
+            "attempts": len(state["trace"]),
+            "trace": state["trace"],
+            "guardrails": {
+                "output_blocked": guardrail_blocked,
+                "output_blocked_reasons": (
+                    output_check.blocked_reasons + [v.reason for v in output_policy.violations]
+                    if guardrail_blocked else []
+                ),
+            },
+            "performance": {"total_time_seconds": round(total_time, 2)},
+        })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500

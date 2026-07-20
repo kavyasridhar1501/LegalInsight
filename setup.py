@@ -35,6 +35,7 @@ setup(
         "llama-cpp-python>=0.2.0",
         "faiss-cpu>=1.7.4",
         "langchain>=0.1.0",
+        "langgraph>=0.2.0",
         "flask>=2.3.0",
         "flask-cors>=4.0.0",
         "pandas>=2.0.0",

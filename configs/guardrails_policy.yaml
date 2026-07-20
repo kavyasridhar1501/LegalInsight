@@ -1,0 +1,47 @@
+# Guardrails Policy Configuration
+#
+# Non-engineers can edit this file to change what LegalInsight is allowed to
+# say, without touching application code. Each rule is evaluated by
+# src/guardrails/policy.py.
+#
+# type: keyword_block   -> violation if ANY keyword appears
+# type: keyword_require -> violation if NONE of the keywords appear
+# applies_to: input | output | both
+
+rules:
+  - name: block_competitor_discussion
+    type: keyword_block
+    applies_to: output
+    enabled: true
+    keywords:
+      - "clio"
+      - "ironclad"
+      - "docusign clm"
+      - "lawgeex"
+
+  - name: block_medical_advice
+    type: keyword_block
+    applies_to: output
+    enabled: true
+    keywords:
+      - "medical diagnosis"
+      - "you should take this medication"
+      - "prescribe"
+
+  - name: block_financial_investment_advice
+    type: keyword_block
+    applies_to: output
+    enabled: true
+    keywords:
+      - "you should invest in"
+      - "guaranteed returns"
+
+  - name: require_source_grounding
+    type: keyword_require
+    applies_to: output
+    enabled: false
+    keywords:
+      - "section"
+      - "clause"
+      - "according to the contract"
+      - "insufficient information"
