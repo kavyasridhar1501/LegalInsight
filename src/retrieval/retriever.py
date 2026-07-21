@@ -51,6 +51,7 @@ class LegalRetriever:
         documents: List[Dict[str, Any]],
         text_field: str = "text",
         chunk_documents: bool = True,
+        replace: bool = True,
     ):
         """
         Index documents for retrieval.
@@ -59,7 +60,18 @@ class LegalRetriever:
             documents: List of document dictionaries with text
             text_field: Field containing document text
             chunk_documents: Whether to chunk documents before indexing
+            replace: If True (default), clears any existing index first so
+                this call's documents are the only ones retrievable. This is
+                the safe default for a retriever reused across independent
+                requests (e.g. one HTTP request = one contract) -- without
+                it, FAISS's append-only add() means every previously indexed
+                document stays searchable forever, silently leaking content
+                across requests. Pass False to incrementally build a single
+                corpus index across multiple calls (e.g. batched ingestion).
         """
+        if replace:
+            self.vector_index = None
+
         if chunk_documents and self.chunker is not None:
             print(f"Chunking {len(documents)} documents...")
             chunks = self.chunker.chunk_documents(documents)
