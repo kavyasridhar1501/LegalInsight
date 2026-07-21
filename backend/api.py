@@ -157,6 +157,27 @@ def initialize():
         "retriever": retriever_result
     })
 
+def _request_retriever() -> LegalRetriever:
+    """
+    A retriever scoped to a single request, sharing the (expensive-to-load)
+    embedding model and chunker with the global instance but with its own
+    empty vector index.
+
+    The Flask dev server used in production here handles requests
+    concurrently, and the global `retriever`'s vector index is mutable
+    state -- reusing it directly meant one in-flight request's
+    index_documents() could wipe out another's between that other
+    request's index_documents() and retrieve() calls, corrupting or
+    emptying its retrieval results. Each request that indexes a contract
+    now gets an isolated index instead.
+    """
+    return LegalRetriever(
+        embedding_model=retriever.embedding_model,
+        chunker=retriever.chunker,
+        top_k=retriever.top_k,
+        min_similarity=retriever.min_similarity,
+    )
+
 @app.route('/analyze_contract', methods=['POST'])
 def analyze_contract():
     """
@@ -188,10 +209,11 @@ def analyze_contract():
         retrieval_context = None
         if use_retrieval and retriever is not None:
             retrieval_start = time.time()
+            request_retriever = _request_retriever()
             documents = [{"text": contract_text, "metadata": {"source": "user_contract"}}]
-            retriever.index_documents(documents)
+            request_retriever.index_documents(documents)
 
-            results = retriever.retrieve(query, top_k=3)
+            results = request_retriever.retrieve(query, top_k=3)
             retrieval_context = "\n\n".join([r['text'] for r in results])
             retrieval_time = time.time() - retrieval_start
         else:
@@ -310,11 +332,12 @@ def analyze_contract_self_healing():
             }), 400
 
         start_time = time.time()
-        retriever.index_documents(
+        request_retriever = _request_retriever()
+        request_retriever.index_documents(
             [{"text": contract_text, "metadata": {"source": "user_contract"}}]
         )
 
-        pipeline = build_self_healing_pipeline(model, retriever, max_attempts=max_attempts)
+        pipeline = build_self_healing_pipeline(model, request_retriever, max_attempts=max_attempts)
         state = pipeline.run(query)
         total_time = time.time() - start_time
 

@@ -62,3 +62,31 @@ class TestIndexReplaceDefault:
 
         retriever.index_documents([{"text": "doc three"}], chunk_documents=False)
         assert retriever.get_num_documents() == 1
+
+
+class TestPerRequestRetrieverIsolation:
+    """Mirrors backend/api.py's _request_retriever() pattern: a single global
+    LegalRetriever's index is mutable state shared across concurrent HTTP
+    requests, so reusing it directly lets one in-flight request's
+    index_documents() wipe out another's between that other request's
+    index_documents() and retrieve() calls (the Flask dev server used in
+    production handles requests concurrently, not one-at-a-time). Giving
+    each request its own LegalRetriever -- sharing only the read-only,
+    expensive-to-load embedding model -- avoids that."""
+
+    def test_interleaved_indexing_on_isolated_retrievers_does_not_corrupt_either(self):
+        shared_embedding_model = FakeEmbeddingModel()
+        retriever_a = LegalRetriever(embedding_model=shared_embedding_model, top_k=5)
+        retriever_b = LegalRetriever(embedding_model=shared_embedding_model, top_k=5)
+
+        # Simulates two requests overlapping in time: B indexes its document
+        # on its own retriever in between A's index and A's retrieve --
+        # this exact interleaving would corrupt a single shared retriever.
+        retriever_a.index_documents([{"text": "contract A about widgets"}], chunk_documents=False)
+        retriever_b.index_documents([{"text": "contract B about gadgets"}], chunk_documents=False)
+
+        texts_a = [r["text"] for r in retriever_a.retrieve("anything", top_k=5)]
+        texts_b = [r["text"] for r in retriever_b.retrieve("anything", top_k=5)]
+
+        assert texts_a == ["contract A about widgets"]
+        assert texts_b == ["contract B about gadgets"]
