@@ -346,6 +346,43 @@ def analyze_contract_self_healing():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+EXTRACTION_INSTRUCTION = (
+    'Extract structured data from this contract as a single JSON object with '
+    'exactly these fields: "parties" (array of strings), "dates" (array of '
+    'strings), "payment_terms" (string), "liability_cap" (string or null), '
+    '"risks" (array of strings).'
+)
+
+@app.route('/extract_key_terms', methods=['POST'])
+def extract_key_terms():
+    """Structured key-term extraction: parties, dates, payment terms, liability cap, risks."""
+    try:
+        data = request.json
+        contract_text = data.get('contract_text', '')
+
+        if not contract_text:
+            return jsonify({"error": "No contract text provided"}), 400
+        if model is None:
+            return jsonify({"error": "Model not initialized. Call /initialize first"}), 503
+        if not isinstance(model, LLMAPIInference):
+            return jsonify({
+                "error": "Key term extraction requires GENERATION_BACKEND=openai or anthropic "
+                         "(not yet supported with the local GGUF model)"
+            }), 501
+
+        parsed = model.generate_json(EXTRACTION_INSTRUCTION, context=contract_text[:6000])
+        if parsed is None:
+            return jsonify({"error": "Could not parse structured data from model output"}), 502
+
+        check = output_guardrails.check_extraction_schema(json.dumps(parsed))
+        if not check.allowed:
+            return jsonify({"error": "Extraction failed validation", "details": check.schema_errors}), 502
+
+        return jsonify({"data": parsed})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/summarize_contract', methods=['POST'])
 def summarize_contract():
     """Quick contract summarization endpoint"""

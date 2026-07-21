@@ -114,6 +114,37 @@ class TestGenerate:
             assert result.isrel == "[Irrelevant]"
 
 
+class TestGenerateJson:
+    def test_returns_parsed_dict_with_custom_shape(self):
+        inference = LLMAPIInference(provider="openai", api_key="fake-key")
+        fake_json = '{"parties": ["Acme", "Beta"], "dates": ["2024-01-01"], "risks": []}'
+
+        with patch("requests.post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {"choices": [{"message": {"content": fake_json}}]}
+            mock_resp.raise_for_status.return_value = None
+            mock_post.return_value = mock_resp
+
+            result = inference.generate_json("Extract parties, dates, risks as JSON.", context="some contract text")
+
+            assert result == {"parties": ["Acme", "Beta"], "dates": ["2024-01-01"], "risks": []}
+            body = mock_post.call_args.kwargs["json"]
+            # Must NOT use the Self-RAG critique system prompt for a generic extraction call
+            assert "isrel" not in body["messages"][0]["content"]
+            assert "some contract text" in body["messages"][1]["content"]
+
+    def test_returns_none_on_invalid_json(self):
+        inference = LLMAPIInference(provider="openai", api_key="fake-key")
+        with patch("requests.post") as mock_post:
+            mock_resp = MagicMock()
+            mock_resp.json.return_value = {"choices": [{"message": {"content": "not json"}}]}
+            mock_resp.raise_for_status.return_value = None
+            mock_post.return_value = mock_resp
+
+            result = inference.generate_json("Extract something.")
+            assert result is None
+
+
 class TestPluggableIntoSelfHealingGraph:
     def test_build_self_healing_pipeline_accepts_llm_api_inference(self):
         """LLMAPIInference must satisfy the exact interface

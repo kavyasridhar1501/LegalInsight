@@ -538,6 +538,17 @@ select:focus {
     color: var(--danger);
 }
 
+/* Backend status line (header) */
+.status-line {
+    margin-top: 8px;
+    font-size: 0.9em;
+    font-weight: 600;
+}
+
+.status-line.error {
+    color: var(--danger);
+}
+
 /* Responsive Design */
 @media (max-width: 1024px) {
     .container {

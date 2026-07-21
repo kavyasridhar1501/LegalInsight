@@ -2,24 +2,22 @@
 
 **AI-Powered Legal Contract Analysis with Self-RAG and Hallucination Detection**
 
-**[Live Demo](https://kavyasridhar1501.github.io/LegalInsight-SelfRAG-HallucinationDetection/)**
+**[Live Demo](https://kavyasridhar1501.github.io/LegalInsight/)**
 
 ---
 
 ## What is LegalInsight?
 
-LegalInsight is an AI-powered system for legal contract analysis that combines **Self-RAG (Self-Reflective Retrieval-Augmented Generation)** with **hallucination detection**. It is powered by **[LangChain.js](https://js.langchain.com/)** running entirely in the browser.
+LegalInsight is an AI-powered system for legal contract analysis built on **Self-RAG (Self-Reflective Retrieval-Augmented Generation)**: real document retrieval, a self-healing retrieve → generate → critique → retry loop, and PII/injection guardrails on both input and output.
 
-Upload contracts, ask questions in natural language, and receive analysis while tracking time savings compared to manual review.
+Paste or upload a contract, ask a question in natural language, and get an answer that's either grounded in the retrieved contract text or an honest "I don't have enough information" — never a guess presented as fact.
 
-Built for legal professionals, LegalInsight provides:
-- **Smart document chunking** via LangChain's `RecursiveCharacterTextSplitter` (true client-side RAG)
-- **Structured prompt management** via LangChain's `ChatPromptTemplate`
-- **Semantic hallucination detection** using LangChain-powered Jaccard similarity scoring
-- **Structured key-term extraction** with LangChain's output parsing
-- **Conversational follow-up** with LangChain conversation history formatting
-- **Multiple AI providers** (OpenAI, Anthropic, Google Gemini, Groq, Cohere, Mistral)
-- **Client-side processing** for privacy and security (no server required)
+The frontend (`frontend/`, deployed to GitHub Pages via `docs/`) is a single static page with no configuration screen: it always talks to the LegalInsight backend, which holds its own LLM API key server-side. Nothing to set up, no API key to paste in.
+
+- **Real retrieval**: FAISS + sentence-transformers embeddings find the relevant clause for each question, not just the whole document dumped into a prompt.
+- **Self-healing loop**: if the critic finds the retrieved passage irrelevant, it reformulates the query and retries; if the passage was relevant but the answer wasn't well-supported, it resamples the generation — see `src/self_rag/self_healing_graph.py`.
+- **Guardrails**: PII/prompt-injection detection on input, toxicity/schema/policy checks on output (`src/guardrails/`).
+- **Structured key-term extraction** and **conversational follow-ups**, both running through the same backend.
 
 ---
 
@@ -53,130 +51,67 @@ LegalInsight includes the **full LegalBench-RAG dataset** with 6,858 legal contr
 
 ### Core Capabilities
 
-- **LangChain RAG Chunking**: Contracts are split into overlapping chunks with `RecursiveCharacterTextSplitter`. Only the most query-relevant sections are sent to the LLM, staying within token limits and focusing the model's attention.
-- **LangChain Prompt Templates**: A single `ChatPromptTemplate` defines the legal analyst system message and user template, reused consistently across all six AI providers.
-- **Hallucination Detection**: Three responses are generated at different temperatures and scored for semantic consistency using Jaccard word-overlap similarity (computed by the LangChain engine).
-- **Structured Key-Term Extraction**: A dedicated LangChain extraction prompt asks the LLM for structured JSON — parties, dates, payment terms, liability cap, key risks — rendered as a clean card.
-- **Conversational Follow-ups**: After each analysis, LangChain re-chunks the contract for the new question and injects the last three exchanges as conversation history, keeping follow-ups in context.
-- **Contract Analysis**: Comprehensive summarisation, key term extraction, and risk identification.
+- **Real RAG**: FAISS + sentence-transformers retrieval finds the relevant clause per question; only that passage (not the whole contract) grounds the answer.
+- **Self-Healing Loop**: retrieve → generate → critique → (reformulate & retry, or resample) → answer or honest fallback. See `src/self_rag/self_healing_graph.py`.
+- **Guardrails**: PII/prompt-injection detection on input; toxicity, schema, and policy checks on output. See `src/guardrails/`.
+- **Structured Key-Term Extraction**: parties, dates, payment terms, liability cap, and risks as structured JSON, rendered as a card.
+- **Conversational Follow-ups**: each follow-up re-runs the same retrieve/critique loop against the contract for the new question.
 - **PDF Support**: Upload and analyse PDF contracts directly in your browser.
 - **Time Tracking**: Quantifiable efficiency improvements vs. manual contract review.
 
 ### User Experience
 
-- **Client-Side Processing**: All analysis happens in your browser — no server required, your data stays private.
-- **Multiple AI Providers**: OpenAI, Anthropic, Google Gemini, Groq, Cohere, or Mistral.
-- **Demo Mode**: Try the system without an API key.
+- **No setup**: no API key to enter, no configuration screen — the backend holds its own LLM API key server-side.
 - **Responsive Design**: Works on desktop, tablet, and mobile.
-- **Real-time Analytics**: Track total analyses, time saved, and efficiency across sessions.
+- **Real-time Analytics**: Track total analyses, time saved, and efficiency across sessions (stored locally in your browser).
 
 ### Security & Privacy
 
-- **Local API Keys**: Stored only in your browser's `localStorage`.
-- **No Server Communication**: Direct client-to-AI provider communication via HTTPS.
-- **No Data Storage**: Contracts and queries are never saved or transmitted to any server.
+- **No client-side API keys**: the frontend never asks for or stores a key; all LLM calls happen server-side.
+- **Guardrails on every request**: PII in a query gets blocked before it's sent to the model; toxic/off-topic/policy-violating output gets withheld before it's shown to you.
+- **No Data Storage**: contract text is used only for the current request; it isn't persisted server-side.
 
 ---
 
 ## Technology Stack
 
 ### Frontend
-- **Core**: HTML5, CSS3, Vanilla JavaScript (ES6+)
-- **LangChain.js**: Loaded as an ES module via `esm.sh` CDN (no npm/build required):
-  - `@langchain/core` — `ChatPromptTemplate`, message types, output parsers
-  - `@langchain/textsplitters` — `RecursiveCharacterTextSplitter`
+- **Core**: HTML5, CSS3, Vanilla JavaScript (ES6+), no build step
 - **PDF Processing**: PDF.js for client-side PDF parsing
-- **Storage**: Browser `localStorage` for API keys and analytics
-- **Deployment**: GitHub Pages (fully static)
+- **Storage**: Browser `localStorage` for session analytics only (no keys, no contract text)
+- **Deployment**: GitHub Pages (`docs/`, fully static, kept in sync with `frontend/`)
 
-### AI Providers (via direct API calls)
-- **OpenAI**: GPT-4o
-- **Anthropic**: Claude 3.5 Sonnet
-- **Google**: Gemini 1.5 Pro
-- **Groq**: Llama 3.1 8B Instant
-- **Cohere**: Command R+
-- **Mistral AI**: Mistral Large
-
-### Analysis Methodology
-- **LangChain RAG**: `RecursiveCharacterTextSplitter` (2 000-char chunks, 200-char overlap) + keyword-scored chunk selection
-- **LangChain Prompts**: `ChatPromptTemplate` for analysis, follow-up, and structured extraction
-- **Hallucination Scoring**: Pairwise Jaccard similarity across three generated responses
-- **Performance Tracking**: Time estimation based on industry standard (7.5 min/page)
-
-### Backend (Optional — not required for GitHub Pages)
-- **Framework**: Flask (Python)
-- **Vector Store**: FAISS for semantic search
-- **Embeddings**: BGE-M3 (sentence-transformers)
-- **Dataset**: LegalBench-RAG (6,858 queries)
+### Backend (what the frontend actually talks to)
+- **Framework**: Flask (Python), deployed to Railway (`railway.toml`) or Render (`render.yaml`)
+- **Generation engine**: hosted LLM API by default (`GENERATION_BACKEND=openai`/`anthropic`, `src/self_rag/llm_api_inference.py`) — structured critique prompt returns `{answer, isrel, issup}` as JSON. `local_gguf` mode (the original local Self-RAG 7B model) is also supported.
+- **Retrieval**: FAISS + sentence-transformers embeddings (`src/retrieval/`)
 - **Self-Healing Orchestration**: LangGraph (`src/self_rag/self_healing_graph.py`)
-- **Guardrails**: Custom PII/injection/schema/policy gateway (`src/guardrails/`)
-- **Eval CI/CD**: Golden-dataset regression gate (`src/evaluation/`, `.github/workflows/eval.yml`)
+- **Guardrails**: PII/injection/schema/policy gateway (`src/guardrails/`)
+- **Dataset**: LegalBench-RAG (6,858 queries) for evaluation, `src/evaluation/`
+- **Eval CI/CD**: Golden-dataset regression gate (`.github/workflows/eval.yml`), plus `scripts/run_full_benchmark.py` for on-demand real-model benchmarking (see [Performance Metrics](#performance-metrics) below).
 
 ---
 
 ## Architecture
 
-### Client-Side Architecture (GitHub Pages Deployment)
-
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         Browser (Client)                         │
-│                                                                  │
-│  ┌───────────────────────────────────────────────────────────┐   │
-│  │                  LegalInsight Frontend                    │   │
-│  │                                                           │   │
-│  │  ┌─────────────┐   ┌──────────────────────────────────-┐  │   │
-│  │  │  PDF.js     │   │     LangChain.js Engine           │  │   │
-│  │  │  Parser     │   │  (langchain-engine.js, ES module) │  │   │
-│  │  └──────┬──────┘   │                                   │  │   │
-│  │         │          │  • RecursiveCharacterTextSplitter │  │   │
-│  │         ↓          │  • ChatPromptTemplate             │  │   │
-│  │  ┌──────────────┐  │  • Jaccard consistency scorer     │  │   │
-│  │  │  Contract    │→ │  • Structured output parser       │  │   │
-│  │  │  Text        │  │  • Conversation history formatter │  │   │
-│  │  └──────────────┘  └──────────────┬────────────────────┘  │   │
-│  │                                   │ formatted messages[]  │   │
-│  │                                   ↓                       │   │
-│  │                         ┌─────────────────┐               │   │
-│  │                         │   app.js        │               │   │
-│  │                         │  Provider calls │               │   │
-│  │                         │  Results display│               │   │
-│  │                         └────────┬────────┘               │   │
-│  └──────────────────────────────────┼────────────────────────┘   │
-│                                     │                            │
-│                               localStorage                       │
-│                          (API Keys, Analytics)                   │
-└─────────────────────────────────────┬────────────────────────────┘
-                                      │ HTTPS
-                                      ↓
-              ┌─────────────────────────────────────┐
-              │         AI Provider APIs            │
-              │  • OpenAI      • Anthropic          │
-              │  • Gemini      • Groq               │
-              │  • Cohere      • Mistral            │
-              └─────────────────────────────────────┘
+┌────────────────────────────┐        ┌──────────────────────────────────────┐
+│   Browser (GitHub Pages)   │        │      LegalInsight Backend (Railway)    │
+│                            │        │                                        │
+│  PDF.js parser             │  HTTPS │  Flask (backend/api.py)               │
+│  contract text / query ────┼───────▶│    ├─ Guardrails (input check)        │
+│  input, results display    │        │    ├─ Retrieval (FAISS + embeddings)  │
+│  (app.js, no config UI,    │        │    ├─ Self-healing graph (LangGraph)  │
+│   no API key)              │◀───────┼──  │   retrieve→generate→critique→    │
+│                            │        │    │   retry/resample/fallback        │
+└────────────────────────────┘        │    ├─ Generation engine               │
+                                       │    │   (hosted LLM API by default,    │
+                                       │    │    local Self-RAG GGUF optional) │
+                                       │    └─ Guardrails (output check)       │
+                                       └──────────────────────────────────────┘
 ```
 
-### LangChain Engine (`langchain-engine.js`)
-
-The engine loads as an ES module and exposes `window.LegalInsightLC`. `app.js` waits up to 6 s for it to be ready and falls back gracefully if the CDN is slow.
-
-| Component | LangChain API | Purpose |
-|---|---|---|
-| Document chunker | `RecursiveCharacterTextSplitter` | Split contracts into 2 000-char overlapping chunks |
-| Chunk selector | keyword scoring | Pick the top-N most query-relevant chunks |
-| Analysis prompt | `ChatPromptTemplate` | Structured legal analyst system + user template |
-| Extraction prompt | `ChatPromptTemplate` | JSON key-term extraction template |
-| Consistency scorer | Jaccard similarity | Compare word-overlap across 3 LLM responses |
-| Message formatter | `HumanMessage`, `AIMessage` | Convert LangChain messages to provider `{role, content}[]` |
-| Output parser | JSON parse + fallback regex | Extract structured data from LLM response |
-
-### System Components
-
-1. **Input Layer** — PDF parsing (PDF.js), text paste, query input
-2. **LangChain Layer** — chunking, prompt formatting, message conversion
-3. **AI Integration Layer** — direct API calls to selected provider (×3 for consistency scoring)
-4. **Output Layer** — analysis display, hallucination risk, structured key terms, follow-up conversation
+The frontend (`frontend/`, mirrored to `docs/` for GitHub Pages) is a thin client: PDF parsing and result rendering only. Every analysis, follow-up, and key-term extraction is a request to the one backend, which holds its own LLM API key server-side and runs the actual Self-RAG pipeline (`src/self_rag/`, `src/retrieval/`, `src/guardrails/`).
 
 ---
 
@@ -187,26 +122,6 @@ false-positive/catch rates, and — when a Self-RAG GGUF model is available —
 hallucination rate and faithfulness with vs. without the self-healing loop)
 are generated by `scripts/run_full_benchmark.py` and persisted at
 [`results/benchmark_results.md`](results/benchmark_results.md).
-
-### Evaluation Results
-
-LegalInsight has been evaluated on a subset of the **LegalBench-RAG dataset** (100 legal contract queries).
-
-### Time Savings Analysis
-
-| Metric | Value |
-|---|---|
-| Total Queries Processed | 98 |
-| Average Manual Time (min) | 1.66 |
-| Average AI Time (sec) | 22.60 |
-| Total Time Saved (hours) | 2.10 |
-| Average Time Saved per Query (min) | 1.28 |
-| Average Efficiency (%) | 64.40 |
-| Average Speedup Factor | 4.26 |
-| Average Consistency Score (%) | 74.65 |
-| Median Efficiency (%) | 70.92 |
-| Min Efficiency (%) | -77.10 |
-| Max Efficiency (%) | 94.25 |
 
 ### Calculation Methodology
 
@@ -226,21 +141,16 @@ Speedup Factor = Manual Time ÷ AI Time
 
 ### Hallucination Detection
 
-The system uses LangChain to generate and score three responses for consistency:
+Rather than generating multiple responses and scoring their similarity after the fact, the backend prevents hallucinated answers from being returned in the first place:
 
-| Consistency Score | Risk Level | Interpretation |
-|---|---|---|
-| **85–100%** | Low | Highly consistent responses, reliable analysis |
-| **70–84%** | Medium | Some variance, review carefully |
-| **< 70%** | High | Significant variance, verify with source |
+| Result shown | Meaning |
+|---|---|
+| **Grounded** | The critic (ISREL/ISSUP-equivalent) found the retrieved passage relevant and the answer supported by it. |
+| **Insufficient Info** | After retries, no answer could be grounded in the retrieved contract text — the pipeline returned an honest fallback instead of a guess. |
 
-**Methodology (LangChain-powered):**
-1. LangChain's `ChatPromptTemplate` formats the analysis prompt
-2. Three responses are generated at temperatures 0.1, 0.5, and 0.9
-3. The LangChain engine computes **pairwise Jaccard similarity** on each response's word sets
-4. The average similarity (mapped to 0–100%) is displayed as the consistency score
+**Methodology:** retrieve → generate → critique (is the passage relevant? is the answer supported by it?) → on rejection, reformulate the query and re-retrieve, or resample generation on the same passage → accept or fall back after `max_attempts`. See [Self-Healing RAG Loop](#self-healing-rag-loop) below and `src/self_rag/self_healing_graph.py`.
 
-This replaces the earlier length-variance proxy with a genuine semantic comparison.
+Real measured numbers (oracle-passage baseline vs. this loop) are in [`results/benchmark_results.md`](results/benchmark_results.md).
 
 ---
 
@@ -249,11 +159,10 @@ This replaces the earlier length-variance proxy with a genuine semantic comparis
 The Flask backend (`backend/api.py`) is what makes this a real RAG system
 instead of a static page calling a provider blind: real document retrieval,
 a self-healing retrieve → generate → critique → retry loop, and PII/
-injection/policy guardrails on input and output. The frontend's provider
-dropdown defaults to **"⭐ Self-RAG (Recommended)"**, which routes through
-this backend — everything else in the dropdown ("Advanced: ... directly")
-bypasses retrieval and guardrails entirely and talks to a provider straight
-from the browser, unchanged from the original app.
+injection/policy guardrails on input and output. The frontend has no
+configuration screen and no provider choice — every request from
+`frontend/app.js` (mirrored in `docs/app.js`) goes to this backend, whose
+URL is the single `BACKEND_URL` constant near the top of that file.
 
 ### Generation engine: hosted API by default, local model optional
 
@@ -276,13 +185,15 @@ implements it.
 
 ### Deploying to Railway
 
-1. Push this repo to GitHub (already done if you're reading this on a branch/PR).
+The live demo's backend is already deployed this way. To deploy your own:
+
+1. Push this repo to GitHub.
 2. On [railway.app](https://railway.app), **New Project → Deploy from GitHub repo**, pick this repo. `railway.toml` is already configured (`python backend/api.py`, health check on `/health`).
 3. In the Railway dashboard's **Variables** tab, set:
    - `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY` + `GENERATION_BACKEND=anthropic`)
    - Railway sets `PORT` automatically — `backend/api.py` already reads it.
 4. Deploy. Once live, copy the Railway-assigned URL (e.g. `https://your-app.up.railway.app`).
-5. Open `frontend/app.js` **and** `docs/app.js`, set `DEFAULT_BACKEND_URL` (near the top, in the State section) to that URL, commit, and push. Every visitor to the deployed frontend now gets a working, connected RAG system with zero setup of their own — no API key, no manual backend URL entry. (Two copies because `docs/` is what GitHub Pages actually serves; `frontend/` is kept in sync with it.)
+5. Open `frontend/app.js` **and** `docs/app.js`, set `BACKEND_URL` (near the top, in the State section) to that URL, commit, and push. (Two copies because `docs/` is what GitHub Pages actually serves; `frontend/` is kept in sync with it.)
 
 Render works the same way via `render.yaml` (also already configured) if you prefer it over Railway.
 
@@ -370,41 +281,34 @@ regression set:
 
 ## Usage
 
-1. **Configure API Provider**
-   - Select provider from dropdown (OpenAI, Anthropic, Gemini, Groq, Cohere, Mistral, or Demo)
-   - Enter your API key and click **Save Key** (stored in `localStorage` only)
+1. **Upload Contract**
+   - Drag & drop a PDF, click **Upload PDF Contract**, or paste text directly. No sign-in, no API key to enter.
 
-2. **Upload Contract**
-   - Drag & drop a PDF, click **Upload PDF Contract**, or paste text directly
-
-3. **Analyse**
+2. **Analyse**
    - Enter an optional specific question
    - Click **Analyse Contract** for full analysis, or **Quick Summary** for a brief overview
-   - LangChain chunks the contract and selects relevant sections automatically
+   - The backend retrieves the relevant passage and runs it through the self-healing critique/retry loop
 
-4. **Review Results**
+3. **Review Results**
    - **Performance Metrics**: Time saved, efficiency, speedup
-   - **RAG badge**: Shows how many sections LangChain selected (e.g. "Analysed 3 of 11 sections")
-   - **Analysis**: AI-generated contract summary, grounded in the relevant chunks
-   - **Hallucination Analysis**: Jaccard-based consistency score and risk level
-   - **Verification Responses**: Show/hide the two additional generated responses
+   - **Analysis**: the grounded answer (or an honest "insufficient information" if nothing could be grounded)
+   - **Guardrails**: whether the input/output passed PII, injection, toxicity, and policy checks
+   - **Self-Healing Trace**: show/hide each retry attempt and why it was accepted or rejected
 
-5. **Extract Key Terms** *(LangChain structured extraction)*
+4. **Extract Key Terms**
    - Click **Extract Key Terms** in the results section
-   - LangChain sends a structured JSON extraction prompt to the LLM
-   - A card appears with parties, dates, payment terms, liability cap, obligations, and risks
+   - A card appears with parties, dates, payment terms, liability cap, and risks
 
-6. **Ask Follow-up Questions** *(LangChain conversation memory)*
+5. **Ask Follow-up Questions**
    - After analysis, a **Follow-up Questions** panel appears
-   - Type a question and press **Enter** or click **Ask**
-   - LangChain re-chunks the contract for each question and injects the last three exchanges as history
+   - Type a question and press **Enter** or click **Ask** — each follow-up re-runs retrieval + the self-healing loop against the same contract
    - Click **Clear History** to reset the conversation
 
 ---
 
 ## Acknowledgments
 
-- **LangChain.js**: [js.langchain.com](https://js.langchain.com/) — document splitting, prompt templates, and message formatting used in `langchain-engine.js`
+- **LangGraph**: [langchain-ai/langgraph](https://github.com/langchain-ai/langgraph) — the self-healing retrieve/critique/retry state machine (`src/self_rag/self_healing_graph.py`)
 - **Self-RAG**: [Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection](https://arxiv.org/abs/2310.11511)
 - **LegalBench-RAG**: [A Benchmark for Retrieval-Augmented Generation in the Legal Domain](https://arxiv.org/abs/2408.10343)
 - **INSIDE**: [INSIDE: LLMs' Internal States Retain the Power of Hallucination Detection](https://arxiv.org/abs/2402.03744)

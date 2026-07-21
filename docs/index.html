@@ -7,8 +7,6 @@
     <link rel="stylesheet" href="styles.css">
     <!-- PDF.js for client-side PDF parsing -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-    <!-- LangChain.js engine (ES module — loads async, graceful fallback if slow) -->
-    <script type="module" src="langchain-engine.js"></script>
 </head>
 <body>
     <div class="container">
@@ -16,66 +14,12 @@
             <h1>⚖️ LegalInsight</h1>
             <p class="description">
                 LLM-powered contract analysis using Self-RAG: real document retrieval,
-                a self-healing critique-and-retry loop, and PII/injection guardrails —
-                served by the LegalInsight backend. An advanced mode that runs entirely
-                in your browser via <strong>LangChain.js</strong> (no retrieval, no
-                guardrails) is also available if you'd rather bring your own API key.
+                a self-healing critique-and-retry loop, and PII/injection guardrails.
             </p>
+            <p id="backend-status-line" class="status-line" style="display:none"></p>
         </header>
 
         <div class="main-content">
-
-            <!-- API Configuration -->
-            <div class="card config-section">
-                <h2>🔑 API Configuration</h2>
-                <div class="form-group">
-                    <label for="api-provider">Choose AI Provider:</label>
-                    <select id="api-provider" onchange="updateApiConfig()">
-                        <option value="reliability-backend">⭐ Self-RAG (Recommended — retrieval + guardrails + self-healing)</option>
-                        <option value="demo">Demo Mode (No API Key Required)</option>
-                        <option value="openai">Advanced: OpenAI directly (GPT-4o, no RAG)</option>
-                        <option value="anthropic">Advanced: Anthropic directly (Claude 3.5 Sonnet, no RAG)</option>
-                        <option value="gemini">Advanced: Google Gemini directly (no RAG)</option>
-                        <option value="groq">Advanced: Groq directly (Llama 3.1, no RAG)</option>
-                        <option value="cohere">Advanced: Cohere directly (Command R+, no RAG)</option>
-                        <option value="mistral">Advanced: Mistral directly (Mistral Large, no RAG)</option>
-                    </select>
-                </div>
-                <div class="form-group" id="backend-url-section" style="display:none">
-                    <label for="backend-url">Self-RAG Backend URL:</label>
-                    <input type="text" id="backend-url" placeholder="http://localhost:5000">
-                    <button onclick="saveBackendUrl()" class="btn btn-secondary">Save URL</button>
-                    <button onclick="initializeBackend()" class="btn btn-outline btn-sm" id="init-backend-btn">
-                        Initialize Backend
-                    </button>
-                    <span id="backend-status"></span>
-                    <p class="help-text">
-                        Routes analysis through the LegalInsight backend: real document retrieval, a
-                        self-healing retrieve &rarr; generate &rarr; critique &rarr; retry loop, and
-                        PII/injection/policy guardrails on both input and output. By default the backend
-                        generates via a hosted LLM API (fast, no model download); set
-                        <code>GENERATION_BACKEND=local_gguf</code> on the backend if you want the local
-                        Self-RAG model instead. This field defaults to the deployed backend below &mdash;
-                        change it only if you're running your own (e.g. <code>http://localhost:5000</code>
-                        for local development).
-                    </p>
-                </div>
-                <div class="form-group" id="api-key-section" style="display:none">
-                    <label for="api-key">API Key:</label>
-                    <input type="password" id="api-key"
-                           placeholder="Enter your API key (stored locally only)">
-                    <button onclick="saveApiKey()" class="btn btn-secondary">Save Key</button>
-                    <span id="api-status"></span>
-                    <p class="help-text">
-                        Advanced/legacy mode: calls the provider directly from your browser, bypassing
-                        retrieval, guardrails, and self-healing entirely. Your API key is stored locally
-                        and never sent anywhere except directly to the AI provider.
-                        <br>Get your API key:
-                        <a href="https://platform.openai.com/api-keys" target="_blank"
-                           id="api-link">OpenAI</a>
-                    </p>
-                </div>
-            </div>
 
             <!-- Contract Input -->
             <div class="card">
@@ -164,9 +108,6 @@ Example: This Agreement is entered into on January 1, 2024, between Company A an
                     </div>
                 </div>
 
-                <!-- RAG chunk badge -->
-                <span id="chunk-info" class="chunk-badge" style="display:none"></span>
-
                 <!-- Primary analysis -->
                 <div class="answer-section">
                     <h3>💡 Analysis</h3>
@@ -181,42 +122,17 @@ Example: This Agreement is entered into on January 1, 2024, between Company A an
                     </button>
                 </div>
 
-                <!-- Guardrails & Self-Healing (Reliability Backend mode only) -->
-                <div id="reliability-section" style="display:none">
-                    <div class="answer-section">
-                        <h3>🛡️ Guardrails</h3>
-                        <div id="guardrails-status"></div>
-                    </div>
-                    <div class="alternatives-section">
-                        <h3>🔁 Self-Healing Trace</h3>
-                        <button onclick="toggleHealingTrace()" class="btn btn-outline btn-sm">
-                            Show / Hide
-                        </button>
-                        <div id="healing-trace-content" style="display:none"></div>
-                    </div>
+                <!-- Guardrails & Self-Healing -->
+                <div class="answer-section">
+                    <h3>🛡️ Guardrails</h3>
+                    <div id="guardrails-status"></div>
                 </div>
-
-                <!-- Hallucination / consistency analysis -->
-                <div class="eigenscore-section" id="eigenscore-section">
-                    <h3>🎯 Hallucination Analysis</h3>
-                    <div class="eigenscore-details">
-                        <div class="consistency-bar">
-                            <div class="consistency-fill" id="consistency-fill"></div>
-                        </div>
-                        <div class="eigenscore-info">
-                            <p>
-                                <strong>Consistency Score:</strong>
-                                <span id="consistency-score">--</span>
-                            </p>
-                            <p>
-                                <strong>Interpretation:</strong>
-                                <span id="consistency-interpretation">--</span>
-                            </p>
-                            <p class="consistency-method-note">
-                                <span id="consistency-method"></span>
-                            </p>
-                        </div>
-                    </div>
+                <div class="alternatives-section">
+                    <h3>🔁 Self-Healing Trace</h3>
+                    <button onclick="toggleHealingTrace()" class="btn btn-outline btn-sm">
+                        Show / Hide
+                    </button>
+                    <div id="healing-trace-content" style="display:none"></div>
                 </div>
 
                 <!-- Performance metrics table -->
@@ -241,24 +157,11 @@ Example: This Agreement is entered into on January 1, 2024, between Company A an
                         </tr>
                     </table>
                 </div>
-
-                <!-- Verification responses -->
-                <div class="alternatives-section" id="alternatives-section">
-                    <h3>🔄 Verification Responses</h3>
-                    <button onclick="toggleAlternatives()"
-                            class="btn btn-outline btn-sm">
-                        Show / Hide
-                    </button>
-                    <div id="alternatives-content" style="display:none"></div>
-                </div>
             </div>
 
             <!-- Structured Key Terms -->
             <div id="structured-data-section" class="card" style="display:none">
                 <h2>🗂️ Key Contract Terms</h2>
-                <p class="help-text" style="margin-bottom:20px">
-                    Extracted by LangChain's structured output parser.
-                </p>
                 <div id="structured-data-content"></div>
             </div>
 
@@ -266,8 +169,8 @@ Example: This Agreement is entered into on January 1, 2024, between Company A an
             <div id="followup-section" class="card followup-card" style="display:none">
                 <h2>💬 Follow-up Questions</h2>
                 <p class="help-text" style="margin-bottom:20px">
-                    LangChain re-chunks the contract for each question and passes
-                    conversation history so follow-ups stay in context.
+                    Each follow-up runs the same retrieve → generate → critique loop against
+                    this contract for the new question.
                 </p>
 
                 <div id="conversation-history"></div>

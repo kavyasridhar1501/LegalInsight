@@ -85,10 +85,32 @@ class LLMAPIInference:
         else:
             user_prompt = f"No passage was retrieved for this question.\n\nQuestion: {question}"
 
-        raw = self._call_api(user_prompt, temperature, max_tokens)
+        raw = self._call_api(user_prompt, temperature, max_tokens, CRITIQUE_SYSTEM_PROMPT)
         return self._parse(raw)
 
-    def _call_api(self, user_prompt: str, temperature: float, max_tokens: int) -> str:
+    def generate_json(
+        self,
+        instruction: str,
+        context: Optional[str] = None,
+        temperature: float = 0.0,
+        max_tokens: int = 500,
+    ) -> Optional[dict]:
+        """
+        General-purpose structured JSON call -- NOT the Self-RAG critique
+        schema .generate() uses. For tasks like key-term extraction where
+        the caller defines its own JSON shape in `instruction`.
+
+        Returns the parsed dict, or None if the response wasn't valid JSON.
+        """
+        system_prompt = (
+            "You are a legal data-extraction specialist. Respond with ONLY a "
+            "single valid JSON object matching the requested shape -- no other text."
+        )
+        user_prompt = f"{instruction}\n\nContract text:\n{context}" if context else instruction
+        raw = self._call_api(user_prompt, temperature, max_tokens, system_prompt)
+        return self._parse_json_only(raw)
+
+    def _call_api(self, user_prompt: str, temperature: float, max_tokens: int, system_prompt: str) -> str:
         if self.provider == "openai":
             res = requests.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -96,7 +118,7 @@ class LLMAPIInference:
                 json={
                     "model": self.model,
                     "messages": [
-                        {"role": "system", "content": CRITIQUE_SYSTEM_PROMPT},
+                        {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
                     ],
                     "temperature": temperature,
@@ -120,7 +142,7 @@ class LLMAPIInference:
                     "model": self.model,
                     "max_tokens": max_tokens,
                     "temperature": temperature,
-                    "system": CRITIQUE_SYSTEM_PROMPT,
+                    "system": system_prompt,
                     "messages": [{"role": "user", "content": user_prompt}],
                 },
                 timeout=self.timeout,
@@ -131,16 +153,23 @@ class LLMAPIInference:
         raise ValueError(f"Unknown provider: {self.provider}")
 
     @staticmethod
-    def _parse(raw: str) -> SelfRAGOutput:
+    def _parse_json_only(raw: str) -> Optional[dict]:
         text = raw.strip()
         if text.startswith("```"):
             text = text.strip("`")
             if text.lower().startswith("json"):
                 text = text[4:]
             text = text.strip()
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return None
+
+    @classmethod
+    def _parse(cls, raw: str) -> SelfRAGOutput:
+        data = cls._parse_json_only(raw)
 
         try:
-            data = json.loads(text)
             isrel = data.get("isrel", "Relevant")
             issup = data.get("issup", "Partially supported")
             return SelfRAGOutput(
@@ -149,7 +178,7 @@ class LLMAPIInference:
                 issup=f"[{issup}]",
                 raw_output=raw,
             )
-        except (json.JSONDecodeError, AttributeError):
+        except AttributeError:
             # Model didn't return valid JSON -- treat the raw text as the answer
             # but mark the critique as unreliable rather than pretending it passed.
             return SelfRAGOutput(

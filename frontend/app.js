@@ -1,8 +1,10 @@
 /**
  * LegalInsight - Main Application
  *
- * Works with langchain-engine.js (loaded as ES module) when available.
- * Falls back gracefully if the LangChain module hasn't loaded yet.
+ * Single path: every analysis, follow-up, and extraction goes through the
+ * LegalInsight Self-RAG backend (retrieval + guardrails + self-healing
+ * critique/retry). No provider dropdown, no client-side API key -- the
+ * backend holds its own LLM API key server-side.
  */
 
 // PDF.js setup
@@ -15,180 +17,62 @@ if (typeof pdfjsLib !== 'undefined') {
 // State
 
 let currentPDFText = '';
-let conversationHistory = [];   // [{role: 'user'|'assistant', content: string}]
-let lastContractText   = '';    // contract used for current analysis (for follow-ups)
+let lastContractText = '';   // contract used for the current analysis (for follow-ups/extraction)
 let analytics = { totalAnalyses: 0, totalTimeSaved: 0, totalEfficiency: 0 };
 
-// Fill in once the backend is deployed (e.g. to Railway) so visitors get a
-// working Self-RAG backend out of the box, with no setup of their own.
-// Leave empty to require everyone to enter their own backend URL.
-const DEFAULT_BACKEND_URL = 'https://legalinsight-production.up.railway.app';
-
-// LangChain engine accessor
-
-/**
- * Returns the LangChain engine once the module has loaded.
- * Falls back to null after 6 s so the app still works without it.
- */
-async function getLCEngine(timeout = 6000) {
-    if (window.LegalInsightLC) return window.LegalInsightLC;
-    return new Promise(resolve => {
-        const timer = setTimeout(() => resolve(null), timeout);
-        window.addEventListener('lc:ready', () => {
-            clearTimeout(timer);
-            resolve(window.LegalInsightLC);
-        }, { once: true });
-    });
-}
+// The one backend this app talks to. Change this if you're running your own
+// (e.g. 'http://localhost:5000' for local development against backend/api.py).
+const BACKEND_URL = 'https://legalinsight-production.up.railway.app';
 
 // Initialisation
 
 window.addEventListener('DOMContentLoaded', function () {
-    loadSettings();
     loadAnalytics();
     setupDragAndDrop();
-
-    // If a deployed backend is configured and it's the active provider,
-    // initialise it automatically so first-time visitors don't have to
-    // find and click the button before anything works.
-    if (DEFAULT_BACKEND_URL && getValue('api-provider') === 'reliability-backend') {
-        initializeBackend();
-    }
+    initializeBackend();
 });
 
-function loadSettings() {
-    const provider = localStorage.getItem('api_provider') || 'reliability-backend';
-    const apiKey    = localStorage.getItem('api_key') || '';
-
-    // Seed localStorage with the deployed default on first visit, so the
-    // Self-RAG backend works immediately with no setup -- not just prefill
-    // the input box (which alone wouldn't persist until "Save URL" is clicked).
-    if (!localStorage.getItem('backend_url') && DEFAULT_BACKEND_URL) {
-        localStorage.setItem('backend_url', DEFAULT_BACKEND_URL);
-    }
-    const backendUrl = localStorage.getItem('backend_url') || '';
-
-    const providerEl = document.getElementById('api-provider');
-    if (providerEl) providerEl.value = provider;
-
-    const apiKeyEl = document.getElementById('api-key');
-    if (apiKey && apiKeyEl) {
-        apiKeyEl.value = apiKey;
-        const statusEl = document.getElementById('api-status');
-        if (statusEl) { statusEl.textContent = '✓ Saved'; statusEl.className = 'success'; }
-    }
-
-    const backendUrlEl = document.getElementById('backend-url');
-    if (backendUrlEl) backendUrlEl.value = backendUrl;
-
-    updateApiConfig();
-}
-
-function updateApiConfig() {
-    const providerEl = document.getElementById('api-provider');
-    if (!providerEl) return;
-
-    const provider = providerEl.value;
-    localStorage.setItem('api_provider', provider);
-
-    const apiKeySection    = document.getElementById('api-key-section');
-    const backendUrlSection = document.getElementById('backend-url-section');
-    const apiLink          = document.getElementById('api-link');
-
-    if (provider === 'reliability-backend') {
-        if (apiKeySection) apiKeySection.style.display = 'none';
-        if (backendUrlSection) backendUrlSection.style.display = 'block';
-        return;
-    }
-    if (backendUrlSection) backendUrlSection.style.display = 'none';
-
-    if (provider === 'demo') {
-        if (apiKeySection) apiKeySection.style.display = 'none';
-    } else {
-        if (apiKeySection) apiKeySection.style.display = 'block';
-        const links = {
-            openai:    { url: 'https://platform.openai.com/api-keys',          name: 'OpenAI' },
-            anthropic: { url: 'https://console.anthropic.com/account/keys',    name: 'Anthropic' },
-            gemini:    { url: 'https://makersuite.google.com/app/apikey',       name: 'Google AI Studio' },
-            groq:      { url: 'https://console.groq.com/keys',                 name: 'Groq' },
-            cohere:    { url: 'https://dashboard.cohere.com/api-keys',         name: 'Cohere' },
-            mistral:   { url: 'https://console.mistral.ai/api-keys',           name: 'Mistral AI' }
-        };
-        if (apiLink && links[provider]) {
-            apiLink.href = links[provider].url;
-            apiLink.textContent = links[provider].name;
-        }
-    }
-}
-
-function saveApiKey() {
-    const apiKeyEl = document.getElementById('api-key');
-    const statusEl = document.getElementById('api-status');
-    if (!apiKeyEl || !statusEl) return;
-
-    const apiKey = apiKeyEl.value.trim();
-    if (!apiKey) {
-        statusEl.textContent = '✗ Please enter an API key';
-        statusEl.className = 'error';
-        return;
-    }
-    localStorage.setItem('api_key', apiKey);
-    statusEl.textContent = '✓ API Key Saved';
-    statusEl.className = 'success';
-}
-
-function saveBackendUrl() {
-    const urlEl    = document.getElementById('backend-url');
-    const statusEl = document.getElementById('backend-status');
-    if (!urlEl || !statusEl) return;
-
-    const url = urlEl.value.trim().replace(/\/+$/, '');
-    if (!url) {
-        statusEl.textContent = '✗ Please enter a backend URL';
-        statusEl.className = 'error';
-        return;
-    }
-    localStorage.setItem('backend_url', url);
-    statusEl.textContent = '✓ URL Saved — click "Initialize Backend" next';
-    statusEl.className = 'success';
-}
-
 async function initializeBackend() {
-    const statusEl = document.getElementById('backend-status');
-    const backendUrl = localStorage.getItem('backend_url');
-    if (!backendUrl) {
-        alert('Please enter and save a backend URL first');
-        return;
-    }
-
-    disableBtn('init-backend-btn', true);
-    if (statusEl) { statusEl.textContent = 'Initialising model + retriever…'; statusEl.className = ''; }
-
+    setStatusLine('Connecting to Self-RAG backend…', '');
     try {
-        const res = await fetch(backendUrl + '/initialize', { method: 'POST' });
+        // The backend already initializes itself at boot (see backend/api.py's
+        // __main__), so a healthy backend needs no further action here --
+        // only fall back to POST /initialize if it somehow isn't ready yet.
+        // Avoids forcing every single page load to redundantly reload the
+        // embedding model.
+        const health = await fetch(BACKEND_URL + '/health').then(r => r.json());
+        if (health.model_loaded && health.retriever_loaded) {
+            setStatusLine('', '');
+            return;
+        }
+
+        const res = await fetch(BACKEND_URL + '/initialize', { method: 'POST' });
         const data = await res.json();
 
         const modelOk     = data.model && !data.model.error;
         const retrieverOk = data.retriever && !data.retriever.error;
 
         if (modelOk && retrieverOk) {
-            if (statusEl) { statusEl.textContent = '✓ Backend ready'; statusEl.className = 'success'; }
+            setStatusLine('', '');  // ready -- no banner needed
         } else {
             const problems = [
                 !modelOk     ? (data.model && data.model.message) || (data.model && data.model.error) : null,
                 !retrieverOk ? (data.retriever && data.retriever.error) : null
             ].filter(Boolean).join(' | ');
-            if (statusEl) { statusEl.textContent = '⚠ ' + (problems || 'Backend not fully initialised'); statusEl.className = 'error'; }
+            setStatusLine('⚠ Backend not fully ready: ' + (problems || 'unknown issue'), 'error');
         }
     } catch (err) {
         console.error('Backend init failed:', err);
-        if (statusEl) {
-            statusEl.textContent = '✗ Could not reach backend at ' + backendUrl;
-            statusEl.className = 'error';
-        }
-    } finally {
-        disableBtn('init-backend-btn', false);
+        setStatusLine('✗ Could not reach the LegalInsight backend. Please try again shortly.', 'error');
     }
+}
+
+function setStatusLine(text, cls) {
+    const el = document.getElementById('backend-status-line');
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'status-line' + (cls ? ' ' + cls : '');
+    el.style.display = text ? 'block' : 'none';
 }
 
 // Drag-and-drop
@@ -284,114 +168,16 @@ async function summarizeContract() {
 }
 
 async function performAnalysis(contractText, query) {
-    const provider = getValue('api-provider') || 'demo';
-
-    if (provider === 'reliability-backend') {
-        await performBackendAnalysis(contractText, query);
-        return;
-    }
-
-    const apiKey = localStorage.getItem('api_key');
-    if (provider !== 'demo' && !apiKey) {
-        alert('Please enter your API key first');
-        return;
-    }
-
-    setLoading(true, 'Initialising analysis engine...');
-    hide('results-section');
-    hide('followup-section');
-    hide('structured-data-section');
-    disableBtn('analyze-btn', true);
-
-    // Reset conversation for fresh analysis
-    conversationHistory = [];
-    lastContractText    = contractText;
-
-    const startTime = Date.now();
-
-    try {
-        const lc = await getLCEngine();
-
-        // Step 1: chunk + find relevant context
-        let context = contractText;
-        let chunkInfo = null;
-
-        if (lc) {
-            setLoading(true, 'Chunking contract with LangChain...');
-            const result = await lc.getRelevantChunks(contractText, query);
-            context   = result.context;
-            chunkInfo = { used: result.used, total: result.total };
-        }
-
-        // Step 2: format messages with LangChain prompt template
-        let messagesTemplate = null;
-        if (lc) {
-            setLoading(true, 'Formatting prompt with LangChain...');
-            messagesTemplate = await lc.formatAnalysisMessages(context, query);
-        }
-
-        // Step 3: three generations for consistency scoring
-        setLoading(true, 'Generating analysis (1/3)...');
-        const r1 = await callAI(provider, apiKey, contractText, query, 0.1, messagesTemplate);
-
-        setLoading(true, 'Generating verification (2/3)...');
-        const r2 = await callAI(provider, apiKey, contractText, query, 0.5, messagesTemplate);
-
-        setLoading(true, 'Generating verification (3/3)...');
-        const r3 = await callAI(provider, apiKey, contractText, query, 0.9, messagesTemplate);
-
-        const totalTime = (Date.now() - startTime) / 1000;
-
-        // Step 4: consistency score
-        const consistencyScore = lc
-            ? lc.calculateSemanticConsistency([r1, r2, r3])
-            : calculateConsistencyFallback([r1, r2, r3]);
-
-        // Step 5: store primary in conversation history
-        conversationHistory.push({ role: 'user',      content: query });
-        conversationHistory.push({ role: 'assistant', content: r1   });
-
-        displayResults({
-            answer: r1,
-            alternativeResponses: [r2, r3],
-            consistencyScore,
-            contractLength: contractText.length,
-            analysisTime: totalTime,
-            chunkInfo,
-            lcEnabled: !!lc
-        });
-
-        updateAnalytics(contractText.length, totalTime);
-
-    } catch (err) {
-        console.error('Analysis failed:', err);
-        alert('Analysis failed: ' + err.message + '\n\nPlease check your API key and try again.');
-    } finally {
-        setLoading(false);
-        disableBtn('analyze-btn', false);
-    }
-}
-
-// Reliability backend (self-healing RAG + guardrails)
-
-async function performBackendAnalysis(contractText, query) {
-    const backendUrl = localStorage.getItem('backend_url');
-    if (!backendUrl) {
-        alert('Please enter and save a Reliability Backend URL first');
-        return;
-    }
-
     setLoading(true, 'Running self-healing retrieve → generate → critique loop...');
     hide('results-section');
     hide('followup-section');
     hide('structured-data-section');
     disableBtn('analyze-btn', true);
 
-    conversationHistory = [];
-    lastContractText    = contractText;
+    lastContractText = contractText;
 
     try {
-        const res = await fetch(backendUrl + '/analyze_contract_self_healing', {
+        const res = await fetch(BACKEND_URL + '/analyze_contract_self_healing', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ contract_text: contractText, query, max_attempts: 2 })
@@ -401,21 +187,21 @@ async function performBackendAnalysis(contractText, query) {
         if (!res.ok) {
             const reasons = (data.reasons || []).join(', ');
             alert(
-                (data.error || 'Backend request failed') +
+                (data.error || 'Analysis failed') +
                 (reasons ? '\n\nReason(s): ' + reasons : '')
             );
             return;
         }
 
-        displayBackendResults(data, contractText);
+        displayResults(data, contractText);
         updateAnalytics(contractText.length, data.performance.total_time_seconds);
 
     } catch (err) {
-        console.error('Backend analysis failed:', err);
+        console.error('Analysis failed:', err);
         alert(
-            'Could not reach the reliability backend at ' + backendUrl + '.\n\n' +
-            'Make sure backend/api.py is running and reachable, and that you clicked ' +
-            '"Initialize Backend" first.\n\nDetails: ' + err.message
+            'Could not reach the LegalInsight backend.\n\n' +
+            'It may be waking up from idle -- please try again in a moment.\n\n' +
+            'Details: ' + err.message
         );
     } finally {
         setLoading(false);
@@ -423,7 +209,7 @@ async function performBackendAnalysis(contractText, query) {
     }
 }
 
-function displayBackendResults(data, contractText) {
+function displayResults(data, contractText) {
     const manualTime = estimateManualTime(contractText.length);
     const totalTime  = data.performance.total_time_seconds;
     const timeSaved  = manualTime - totalTime;
@@ -442,11 +228,6 @@ function displayBackendResults(data, contractText) {
     }
 
     setText('answer-content', data.answer);
-
-    hide('chunk-info');
-    hide('eigenscore-section');
-    hide('alternatives-section');
-    show('reliability-section');
 
     setText('manual-time',     (manualTime / 60).toFixed(1) + ' minutes');
     setText('ai-time',         totalTime.toFixed(2) + ' seconds');
@@ -480,7 +261,7 @@ function displayBackendResults(data, contractText) {
 
     show('results-section');
     document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
-    hide('followup-section');
+    show('followup-section');
     hide('structured-data-section');
 }
 
@@ -490,40 +271,34 @@ function toggleHealingTrace() {
 }
 
 // Follow-up questions
+//
+// Each follow-up is a fresh self-healing analysis of the same contract with
+// the new question -- retrieval finds the relevant clause per-question, so
+// no client-side conversation history needs to be threaded through.
 
 async function askFollowUp() {
     const input = getValue('followup-input').trim();
     if (!input) { alert('Please enter a follow-up question'); return; }
-
-    const provider = getValue('api-provider') || 'demo';
-    const apiKey   = localStorage.getItem('api_key');
-    if (provider !== 'demo' && !apiKey) {
-        alert('Please enter your API key first');
-        return;
-    }
+    if (!lastContractText) { alert('Please run an analysis first'); return; }
 
     show('followup-loading');
     disableBtn('followup-btn', true);
 
     try {
-        const lc = await getLCEngine();
+        const res = await fetch(BACKEND_URL + '/analyze_contract_self_healing', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contract_text: lastContractText, query: input, max_attempts: 2 })
+        });
+        const data = await res.json();
 
-        let messages = null;
-        if (lc && lastContractText) {
-            const result = await lc.getRelevantChunks(lastContractText, input, 3);
-            messages = await lc.formatAnalysisMessages(
-                result.context,
-                input,
-                conversationHistory.slice(-6)  // last 3 exchanges
-            );
+        if (!res.ok) {
+            const reasons = (data.reasons || []).join(', ');
+            alert((data.error || 'Follow-up failed') + (reasons ? '\n\nReason(s): ' + reasons : ''));
+            return;
         }
 
-        const response = await callAI(provider, apiKey, lastContractText, input, 0.2, messages);
-
-        conversationHistory.push({ role: 'user',      content: input   });
-        conversationHistory.push({ role: 'assistant', content: response });
-
-        appendFollowUpExchange(input, response);
+        appendFollowUpExchange(input, data.answer);
         setValue('followup-input', '');
 
     } catch (err) {
@@ -549,7 +324,6 @@ function appendFollowUpExchange(question, answer) {
 }
 
 function clearConversation() {
-    conversationHistory = [];
     const container = document.getElementById('conversation-history');
     if (container) container.innerHTML = '';
 }
@@ -560,43 +334,25 @@ async function extractKeyTerms() {
     const contractText = lastContractText || getContractText();
     if (!contractText) { alert('Please run an analysis first'); return; }
 
-    const provider = getValue('api-provider') || 'demo';
-    const apiKey   = localStorage.getItem('api_key');
-    if (provider !== 'demo' && !apiKey) {
-        alert('Please enter your API key first');
-        return;
-    }
-
     disableBtn('extract-btn', true);
     const btn = document.getElementById('extract-btn');
     if (btn) btn.textContent = 'Extracting…';
 
     try {
-        const lc = await getLCEngine();
-        let messages = null;
+        const res = await fetch(BACKEND_URL + '/extract_key_terms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contract_text: contractText })
+        });
+        const result = await res.json();
 
-        if (lc) {
-            messages = await lc.formatExtractionMessages(contractText);
-        } else {
-            // Fallback: simple extraction prompt without LangChain
-            messages = [
-                { role: 'system', content: 'You are a legal data-extraction specialist. Return ONLY valid JSON.' },
-                { role: 'user',   content: buildFallbackExtractionPrompt(contractText) }
-            ];
+        if (!res.ok) {
+            alert((result.error || 'Key terms extraction failed'));
+            return;
         }
 
-        const rawJson = await callAI(provider, apiKey, contractText, '', 0.1, messages);
-
-        const data = lc
-            ? lc.parseStructuredData(rawJson)
-            : JSON.parse(rawJson.replace(/```json\n?|```\n?/g, '').trim());
-
-        const html = lc
-            ? lc.renderStructuredData(data)
-            : renderFallbackStructuredData(data);
-
         const content = document.getElementById('structured-data-content');
-        if (content) content.innerHTML = html || '<p>Could not parse structured data.</p>';
+        if (content) content.innerHTML = renderStructuredData(result.data);
 
         show('structured-data-section');
         document.getElementById('structured-data-section').scrollIntoView({ behavior: 'smooth' });
@@ -611,363 +367,21 @@ async function extractKeyTerms() {
     }
 }
 
-function buildFallbackExtractionPrompt(text) {
-    return `Extract contract data as JSON with fields: contract_type, parties, effective_date, ` +
-           `term_duration, payment_terms, termination_notice, governing_law, ` +
-           `key_obligations (array), key_risks (array).\n\nContract:\n${text.slice(0, 4000)}`;
-}
-
-function renderFallbackStructuredData(data) {
+function renderStructuredData(data) {
     if (!data) return '<p>No structured data available.</p>';
-    return `<pre style="white-space:pre-wrap;font-size:0.9em">${JSON.stringify(data, null, 2)}</pre>`;
-}
-
-// Provider routing
-
-/**
- * Routes to the appropriate provider.
- *
- * @param {string}      provider
- * @param {string}      apiKey
- * @param {string}      contractText  - raw text (used only for demo / Gemini concat)
- * @param {string}      query         - raw query (used only for demo)
- * @param {number}      temperature
- * @param {Array|null}  messages      - pre-formatted LangChain messages (preferred)
- */
-async function callAI(provider, apiKey, contractText, query, temperature, messages) {
-    if (provider === 'demo') {
-        return generateDemoResponse(contractText, query);
-    }
-
-    // If LangChain didn't produce messages (engine not loaded), build them inline
-    const msgs = messages || buildFallbackMessages(contractText, query);
-
-    switch (provider) {
-        case 'openai':    return callOpenAI(apiKey, msgs, temperature);
-        case 'anthropic': return callAnthropic(apiKey, msgs, temperature);
-        case 'gemini':    return callGemini(apiKey, msgs, temperature);
-        case 'groq':      return callGroq(apiKey, msgs, temperature);
-        case 'cohere':    return callCohere(apiKey, msgs, temperature);
-        case 'mistral':   return callMistral(apiKey, msgs, temperature);
-        default:          throw new Error('Unknown provider: ' + provider);
-    }
-}
-
-/** Builds a minimal system+user message pair when LangChain is unavailable. */
-function buildFallbackMessages(contractText, query) {
+    const list = (label, items) => {
+        if (!items) return '';
+        const arr = Array.isArray(items) ? items : [items];
+        if (!arr.length) return '';
+        return `<p><strong>${label}:</strong> ${arr.map(escapeHtml).join(', ')}</p>`;
+    };
     return [
-        {
-            role: 'system',
-            content: 'You are a legal expert specialising in contract analysis. ' +
-                     'Provide detailed, accurate analysis.'
-        },
-        {
-            role: 'user',
-            content: `Contract:\n\n${contractText}\n\nQuestion: ${query}`
-        }
-    ];
-}
-
-// Provider implementations
-
-async function callOpenAI(apiKey, messages, temperature) {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + apiKey
-        },
-        body: JSON.stringify({
-            model: 'gpt-4o',
-            messages,
-            temperature,
-            max_tokens: 1500
-        })
-    });
-    if (!res.ok) {
-        const err = await res.json();
-        throw new Error((err.error && err.error.message) || 'OpenAI API error');
-    }
-    const data = await res.json();
-    return data.choices[0].message.content;
-}
-
-async function callAnthropic(apiKey, messages, temperature) {
-    // Anthropic requires system as a top-level field, not in messages[]
-    const systemMsg  = messages.find(m => m.role === 'system');
-    const chatMsgs   = messages.filter(m => m.role !== 'system');
-
-    const body = {
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 1500,
-        temperature,
-        messages: chatMsgs
-    };
-    if (systemMsg) body.system = systemMsg.content;
-
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-allow-browser': 'true'
-        },
-        body: JSON.stringify(body)
-    });
-    if (!res.ok) {
-        const err = await res.json();
-        throw new Error((err.error && err.error.message) || 'Anthropic API error');
-    }
-    const data = await res.json();
-    return data.content[0].text;
-}
-
-async function callGemini(apiKey, messages, temperature) {
-    // Gemini uses a different format; combine system + user into a single prompt
-    const systemMsg = messages.find(m => m.role === 'system');
-    const userMsgs  = messages.filter(m => m.role === 'user');
-    const lastUser  = userMsgs[userMsgs.length - 1];
-
-    const prefix = systemMsg ? systemMsg.content + '\n\n' : '';
-
-    // Build multi-turn history for Gemini if conversation exists
-    const history = messages
-        .filter(m => m.role === 'user' || m.role === 'assistant')
-        .slice(0, -1)
-        .map(m => ({
-            role: m.role === 'user' ? 'user' : 'model',
-            parts: [{ text: m.content }]
-        }));
-
-    const contents = [
-        ...history,
-        { role: 'user', parts: [{ text: prefix + lastUser.content }] }
-    ];
-
-    const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=${apiKey}`,
-        {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents,
-                generationConfig: { temperature, maxOutputTokens: 1500 }
-            })
-        }
-    );
-    if (!res.ok) {
-        const err = await res.json();
-        throw new Error((err.error && err.error.message) || 'Gemini API error');
-    }
-    const data = await res.json();
-    return data.candidates[0].content.parts[0].text;
-}
-
-async function callGroq(apiKey, messages, temperature) {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + apiKey
-        },
-        body: JSON.stringify({
-            model: 'llama-3.1-8b-instant',
-            messages,
-            temperature,
-            max_tokens: 1500
-        })
-    });
-    if (!res.ok) {
-        const err = await res.json();
-        throw new Error((err.error && err.error.message) || 'Groq API error');
-    }
-    const data = await res.json();
-    return data.choices[0].message.content;
-}
-
-async function callCohere(apiKey, messages, temperature) {
-    const systemMsg = messages.find(m => m.role === 'system');
-    const userMsgs  = messages.filter(m => m.role !== 'system');
-    const lastUser  = userMsgs[userMsgs.length - 1];
-
-    // Convert history to Cohere format (USER/CHATBOT, uppercase)
-    const chatHistory = userMsgs.slice(0, -1).map(m => ({
-        role: m.role === 'user' ? 'USER' : 'CHATBOT',
-        message: m.content
-    }));
-
-    const body = {
-        model: 'command-r-plus',
-        message: lastUser.content,
-        temperature,
-        max_tokens: 1500
-    };
-    if (systemMsg)              body.preamble     = systemMsg.content;
-    if (chatHistory.length > 0) body.chat_history = chatHistory;
-
-    const res = await fetch('https://api.cohere.ai/v1/chat', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + apiKey
-        },
-        body: JSON.stringify(body)
-    });
-    if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Cohere API error');
-    }
-    const data = await res.json();
-    return data.text;
-}
-
-async function callMistral(apiKey, messages, temperature) {
-    const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + apiKey
-        },
-        body: JSON.stringify({
-            model: 'mistral-large-latest',
-            messages,
-            temperature,
-            max_tokens: 1500
-        })
-    });
-    if (!res.ok) {
-        const err = await res.json();
-        throw new Error((err.error && err.error.message) || 'Mistral API error');
-    }
-    const data = await res.json();
-    return data.choices[0].message.content;
-}
-
-// Demo mode
-
-function generateDemoResponse(contractText, query) {
-    return new Promise(resolve => {
-        setTimeout(() => {
-            const type       = detectContractType(contractText);
-            const pages      = Math.round(contractText.length / 3000);
-            const complexity = contractText.length > 10000 ? 'High'
-                             : contractText.length > 5000  ? 'Medium' : 'Low';
-
-            resolve(
-                'DEMO MODE ANALYSIS\n\nThis is a demonstration of LegalInsight.\n\n' +
-                'Key Findings:\n' +
-                `• Contract Type: ${type}\n` +
-                `• Length: ${contractText.length.toLocaleString()} characters (~${pages} pages)\n` +
-                `• Complexity: ${complexity}\n\n` +
-                'To get AI-powered analysis:\n' +
-                '1. Select a provider from the dropdown\n' +
-                '2. Enter your API key\n' +
-                '3. Click "Analyse Contract"\n\n' +
-                'Demo mode does not provide real legal analysis.'
-            );
-        }, 1200);
-    });
-}
-
-function detectContractType(text) {
-    const t = text.toLowerCase();
-    if (t.includes('employment') || t.includes('employee')) return 'Employment Agreement';
-    if (t.includes('lease')      || t.includes('rent'))      return 'Lease Agreement';
-    if (t.includes('license')    || t.includes('software'))  return 'Software License';
-    if (t.includes('service')    || t.includes('consulting'))return 'Service Agreement';
-    if (t.includes('purchase')   || t.includes('sale'))      return 'Purchase Agreement';
-    return 'General Contract';
-}
-
-// Consistency scoring (fallback)
-
-function calculateConsistencyFallback(responses) {
-    const lengths   = responses.map(r => r.length);
-    const avg       = lengths.reduce((a, b) => a + b, 0) / lengths.length;
-    const variance  = Math.max(...lengths) - Math.min(...lengths);
-    return Math.min(100, Math.max(60, 100 - (variance / avg * 100)));
-}
-
-// Display logic
-
-function displayResults(data) {
-    hide('reliability-section');
-    show('eigenscore-section');
-    show('alternatives-section');
-
-    const manualTime = estimateManualTime(data.contractLength);
-    const timeSaved  = manualTime - data.analysisTime;
-    const efficiency = timeSaved / manualTime * 100;
-    const speedup    = manualTime / data.analysisTime;
-
-    setText('time-saved',  (timeSaved / 60).toFixed(1) + ' min');
-    setText('efficiency',  efficiency.toFixed(1) + '%');
-    setText('speedup',     speedup.toFixed(0) + 'x');
-
-    const riskLabel = data.consistencyScore > 85 ? 'Low'
-                    : data.consistencyScore > 70 ? 'Medium' : 'High';
-    setText('hallucination-risk', riskLabel);
-
-    const hallCard = document.getElementById('hallucination-card');
-    if (hallCard) {
-        hallCard.className = 'metric-card ' +
-            (riskLabel === 'Low' ? 'success' : riskLabel === 'Medium' ? 'warning' : 'danger');
-    }
-
-    setText('answer-content', data.answer);
-    setText('consistency-score', data.consistencyScore.toFixed(0) + '%');
-
-    const fill = document.getElementById('consistency-fill');
-    if (fill) fill.style.width = data.consistencyScore + '%';
-
-    const interp = data.consistencyScore > 85
-        ? 'Excellent – All responses highly consistent'
-        : data.consistencyScore > 70
-        ? 'Good – Responses mostly consistent'
-        : 'Fair – Some variation detected, verify carefully';
-    setText('consistency-interpretation', interp);
-
-    const badge = document.getElementById('consistency-method');
-    if (badge) {
-        badge.textContent = data.lcEnabled
-            ? 'Scored via LangChain Jaccard similarity'
-            : 'Scored via length variance (LangChain loading…)';
-    }
-
-    setText('manual-time',      (manualTime / 60).toFixed(1) + ' minutes');
-    setText('ai-time',          data.analysisTime.toFixed(2) + ' seconds');
-    setText('contract-length',  data.contractLength.toLocaleString() + ' characters');
-    setText('estimated-pages',  Math.round(data.contractLength / 3000) + ' pages');
-
-    const chunkEl = document.getElementById('chunk-info');
-    if (chunkEl) {
-        if (data.chunkInfo && data.chunkInfo.total > 1) {
-            chunkEl.textContent =
-                `Analysed ${data.chunkInfo.used} of ${data.chunkInfo.total} sections ` +
-                `(LangChain RAG chunking)`;
-            chunkEl.style.display = 'inline-block';
-        } else {
-            chunkEl.style.display = 'none';
-        }
-    }
-
-    const altDiv = document.getElementById('alternatives-content');
-    if (altDiv) {
-        altDiv.innerHTML = '';
-        data.alternativeResponses.forEach((r, i) => {
-            const d = document.createElement('div');
-            d.className = 'alternative-item';
-            d.innerHTML = `<strong>Verification Response ${i + 1}:</strong><br>${escapeHtml(r)}`;
-            altDiv.appendChild(d);
-        });
-    }
-
-    show('results-section');
-    document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
-
-    show('followup-section');
-    hide('structured-data-section');
+        list('Parties', data.parties),
+        list('Dates', data.dates),
+        data.payment_terms ? `<p><strong>Payment Terms:</strong> ${escapeHtml(String(data.payment_terms))}</p>` : '',
+        data.liability_cap ? `<p><strong>Liability Cap:</strong> ${escapeHtml(String(data.liability_cap))}</p>` : '',
+        list('Risks', data.risks),
+    ].filter(Boolean).join('') || '<p>Could not parse structured data.</p>';
 }
 
 // Analytics
@@ -1037,11 +451,6 @@ function escapeHtml(str) {
         .replace(/>/g,  '&gt;')
         .replace(/"/g,  '&quot;')
         .replace(/'/g,  '&#39;');
-}
-
-function toggleAlternatives() {
-    const el = document.getElementById('alternatives-content');
-    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 function clearAll() {
