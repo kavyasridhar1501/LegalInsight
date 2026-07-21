@@ -25,10 +25,10 @@ jobs:
 
       - name: Install lightweight test dependencies
         run: |
-          pip install pytest pyyaml numpy langgraph
+          pip install pytest pyyaml numpy langgraph requests
 
-      - name: Run guardrails + self-healing tests
-        run: python -m pytest tests/test_guardrails.py tests/test_self_healing_graph.py tests/test_evaluation_metrics.py -v
+      - name: Run guardrails + self-healing + LLM API tests
+        run: python -m pytest tests/test_guardrails.py tests/test_self_healing_graph.py tests/test_evaluation_metrics.py tests/test_llm_api_inference.py -v
 
   retrieval-eval:
     name: Retrieval quality gate (precision@k / recall@k / MRR / latency)
@@ -56,7 +56,10 @@ jobs:
       - name: Install eval dependencies
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install sentence-transformers faiss-cpu pyyaml numpy tqdm
+          pip install sentence-transformers faiss-cpu pyyaml numpy tqdm pytest
+
+      - name: Run retriever unit tests (isolation / no cross-request contamination)
+        run: python -m pytest tests/test_retriever.py -v
 
       - name: Run golden-dataset retrieval eval
         run: |

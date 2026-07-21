@@ -143,7 +143,12 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "model_loaded": model is not None,
-        "retriever_loaded": retriever is not None
+        "retriever_loaded": retriever is not None,
+        # Railway sets RAILWAY_GIT_COMMIT_SHA automatically on every deploy --
+        # surfacing it here makes it possible to confirm which commit is
+        # actually live without dashboard access (came up while debugging a
+        # deploy that silently didn't roll forward after a billing outage).
+        "commit": os.getenv("RAILWAY_GIT_COMMIT_SHA", "unknown")[:12],
     })
 
 @app.route('/initialize', methods=['POST'])

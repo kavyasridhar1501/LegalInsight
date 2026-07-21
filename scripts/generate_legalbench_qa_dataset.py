@@ -8,6 +8,7 @@ a comprehensive Q&A dataset for performance evaluation.
 
 import json
 import os
+from pathlib import Path
 from datasets import load_dataset
 from tqdm import tqdm
 
@@ -153,8 +154,8 @@ def main():
     print(f"  - Average passage length: {avg_length:.0f} characters")
     print(f"  - Estimated pages: {total_chars / 3000:.0f}")
 
-    output_path = '../data/full_legalbench_qa.json'
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    output_path = Path(__file__).parent.parent / "data" / "full_legalbench_qa.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, 'w') as f:
         json.dump(all_qa_pairs, f, indent=2)

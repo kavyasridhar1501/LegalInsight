@@ -13,7 +13,7 @@ setup(
     description="AI-Powered Legal Contract Analysis with Self-RAG + EigenScore",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/kavyasridhar1501/LegalInsight-SelfRAG-HallucinationDetection",
+    url="https://github.com/kavyasridhar1501/LegalInsight",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
