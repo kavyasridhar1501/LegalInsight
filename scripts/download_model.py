@@ -2,6 +2,21 @@
 """
 Download Self-RAG model for LegalInsight
 Downloads the quantized GGUF model from HuggingFace
+
+If llama-cpp-python crashes with an illegal-instruction / SIGILL error
+partway through generation (not at import or load time): some virtualized
+CPUs advertise AVX-512 in /proc/cpuinfo that the hypervisor doesn't actually
+execute, and the prebuilt wheel auto-detects and uses it, then traps.
+Rebuild with AVX-512 disabled:
+
+    pip uninstall -y llama-cpp-python
+    CMAKE_ARGS="-DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON \
+      -DGGML_F16C=ON -DGGML_AVX512=OFF -DGGML_AVX512_VBMI=OFF \
+      -DGGML_AVX512_VNNI=OFF -DGGML_AVX512_BF16=OFF" \
+      pip install --no-cache-dir --force-reinstall --no-binary llama-cpp-python llama-cpp-python
+
+GGML_NATIVE=OFF is the important flag -- without it, -march=native at
+compile time re-enables AVX-512 regardless of the individual flags above.
 """
 import os
 import sys
