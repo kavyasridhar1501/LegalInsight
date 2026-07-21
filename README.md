@@ -95,20 +95,20 @@ LegalInsight includes the **full LegalBench-RAG dataset** with 6,858 legal contr
 ## Architecture
 
 ```
-┌────────────────────────────┐        ┌──────────────────────────────────────┐
-│   Browser (GitHub Pages)   │        │      LegalInsight Backend (Railway)    │
-│                            │        │                                        │
-│  PDF.js parser             │  HTTPS │  Flask (backend/api.py)               │
-│  contract text / query ────┼───────▶│    ├─ Guardrails (input check)        │
-│  input, results display    │        │    ├─ Retrieval (FAISS + embeddings)  │
-│  (app.js, no config UI,    │        │    ├─ Self-healing graph (LangGraph)  │
-│   no API key)              │◀───────┼──  │   retrieve→generate→critique→    │
-│                            │        │    │   retry/resample/fallback        │
-└────────────────────────────┘        │    ├─ Generation engine               │
+┌────────────────────────────┐         ┌───────────────────────────────────────┐
+│   Browser (GitHub Pages)   │         │      LegalInsight Backend (Railway)   │
+│                            │         │                                       │
+│  PDF.js parser             │  HTTPS  │  Flask (backend/api.py)               │
+│  contract text / query ────┼───────▶ │    ├─ Guardrails (input check)        │
+│  input, results display    │         │    ├─ Retrieval (FAISS + embeddings)  │
+│  (app.js, no config UI,    │         │    ├─ Self-healing graph (LangGraph)  │
+│   no API key)              │◀─────── ┼──  │   retrieve→generate→critique→    │
+│                            │         │    │   retry/resample/fallback        │
+└────────────────────────────┘         │    ├─ Generation engine               │
                                        │    │   (hosted LLM API by default,    │
                                        │    │    local Self-RAG GGUF optional) │
                                        │    └─ Guardrails (output check)       │
-                                       └──────────────────────────────────────┘
+                                       └───────────────────────────────────────┘
 ```
 
 The frontend (`frontend/`, mirrored to `docs/` for GitHub Pages) is a thin client: PDF parsing and result rendering only. Every analysis, follow-up, and key-term extraction is a request to the one backend, which holds its own LLM API key server-side and runs the actual Self-RAG pipeline (`src/self_rag/`, `src/retrieval/`, `src/guardrails/`).
